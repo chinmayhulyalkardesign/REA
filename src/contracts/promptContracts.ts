@@ -365,7 +365,7 @@ export const PROMPT_CONTRACTS = [
     description:
       "Choose a command, inputs, observations, and stopping conditions for a process capture that answers the behavioral question.",
     objective:
-      "Run a caller-selected process experiment that can answer the stated behavioral question.",
+      "Design a bounded, caller-selected process experiment that can answer the stated behavioral question before execution.",
     arguments: {
       behavior_question: required(
         "Behavioral question the capture must answer and stopping condition",
@@ -385,12 +385,12 @@ export const PROMPT_CONTRACTS = [
       {
         tools: ["capture_process_scenario"],
         instruction:
-          "Run the caller-provided scenario. Explain command lookup, effective working directory, inherited environment, optional filesystem observations, and that the target runs with the current user's permissions.",
+          "Plan the caller-provided scenario, including inputs, observations, limits, and stopping conditions, before execution. Explain command lookup, effective working directory, inherited environment, optional filesystem observations, and that a later capture runs the target with the current user's permissions.",
       },
       {
         tools: ["compare_process_captures"],
         instruction:
-          "When a prior compatible capture exists, compare complete process capture observations under recorded normalization and freshness requirements.",
+          "Use prior compatible capture Evidence, when available, to refine the planned observations and the normalization and freshness requirements for later comparisons.",
       },
       {
         tools: ["record_unknown"],

@@ -7,7 +7,10 @@ import {
 import { createEvidence } from "../evidence.js";
 import { freezeJsonSnapshot } from "../immutableJson.js";
 import { jsonObjectSchema } from "../jsonValue.js";
-import { projectIl2cppMetadataView } from "./il2cppMetadataView.js";
+import {
+  il2cppMetadataViewRequestSchema,
+  projectIl2cppMetadataView,
+} from "./il2cppMetadataView.js";
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -366,6 +369,51 @@ it("intersects batch identities, fields, image ranges and exact names in source 
   });
   if (!identityOnly.ok) throw identityOnly.error;
   expect(identityOnly.value).toMatchObject({ items: [{ index: 0 }] });
+});
+
+it.each([
+  ["return_types", "void"],
+  ["field_types", "int"],
+  ["parameter_types", "int"],
+] as const)("accepts names for %s type-reference views", (collection, name) => {
+  const view = il2cppMetadataViewRequestSchema.parse({
+    kind: "il2cpp-metadata",
+    collection,
+    names: [name],
+    offset: 0,
+    limit: 64,
+  });
+  const result = projectIl2cppMetadataView(parent(linkedReport(), false), view);
+  if (!result.ok) throw result.error;
+  if (!("items" in result.value)) throw new Error("Expected paged IL2CPP view");
+  expect(result.value.items).toEqual(
+    expect.arrayContaining([expect.objectContaining({ name })]),
+  );
+  expect(
+    result.value.items.every(
+      (item) =>
+        item !== null &&
+        typeof item === "object" &&
+        !Array.isArray(item) &&
+        "name" in item &&
+        item.name === name,
+    ),
+  ).toBe(true);
+
+  const absentView = il2cppMetadataViewRequestSchema.parse({
+    kind: "il2cpp-metadata",
+    collection,
+    names: ["__missing_type_reference__"],
+    offset: 0,
+    limit: 64,
+  });
+  const absent = projectIl2cppMetadataView(
+    parent(linkedReport(), false),
+    absentView,
+  );
+  if (!absent.ok) throw absent.error;
+  if (!("items" in absent.value)) throw new Error("Expected paged IL2CPP view");
+  expect(absent.value.items).toEqual([]);
 });
 
 it.each([

@@ -42,6 +42,7 @@ export const providerSchema = z.strictObject({
   version: z.string().nullable(),
 });
 const subjectFormatSchema = z.enum([
+  "dotnet-bundle",
   "hopper",
   "analysis-database",
   "mach-o",

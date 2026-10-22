@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { expect, it, onTestFinished, vi } from "vitest";
 
 import { ArtifactResourceScope } from "../../../src/artifacts/ArtifactResourceScope.js";
+import { DotnetBundleArtifactReader } from "../../../src/artifacts/DotnetBundleArtifactReader.js";
 import { MachOSliceArtifactReader } from "../../../src/artifacts/MachOSliceArtifactReader.js";
 import { ZipArtifactReader } from "../../../src/artifacts/ZipArtifactReader.js";
 import { ok } from "../../../src/domain/result.js";
@@ -49,11 +50,34 @@ const runner: NativeCommandRunner = {
 
 const readers = [
   ["ZIP", (path: string) => new ZipArtifactReader(path, "zip")],
+  [".NET bundle", (path: string) => new DotnetBundleArtifactReader(path)],
   [
     "Mach-O slice",
     (path: string) => new MachOSliceArtifactReader(path, {}, runner),
   ],
 ] as const;
+
+it("reports cancellation during .NET reader admission and releases the descriptor", async () => {
+  const root = await createTestTempDirectory("rea-bundle-admission-cancel-");
+  const path = join(root, "source");
+  await writeFile(path, "unread source");
+  const controller = new AbortController();
+  let descriptor: FileHandle | undefined;
+  injected.opened = (openedPath, handle) => {
+    if (openedPath !== path) return;
+    descriptor = handle;
+    controller.abort();
+  };
+  const reader = new DotnetBundleArtifactReader(path);
+  onTestFinished(async () => {
+    injected.opened = undefined;
+    await reader.close();
+  });
+  await expect(
+    reader.entries(controller.signal)[Symbol.asyncIterator]().next(),
+  ).rejects.toMatchObject({ reason: "cancelled" });
+  expect(descriptor?.fd).toBe(-1);
+});
 
 it.each(readers)(
   "retains %s reader admission and stat owners",

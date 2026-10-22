@@ -88,11 +88,21 @@ export const pyInstallerEntryMetadataSchema = z.strictObject({
 export type PyInstallerEntryMetadata = z.infer<
   typeof pyInstallerEntryMetadataSchema
 >;
+
+/** Ordinary .NET bundle manifest facts, not proof of managed assembly validity. */
+export const dotnetBundleEntryMetadataSchema = z.strictObject({
+  kind: z.literal("dotnet-bundle-entry"),
+  major_version: uint32,
+  minor_version: uint32,
+  file_type: z.number().int().min(0).max(255),
+});
+
 export const artifactFormatMetadataSchema = z.discriminatedUnion("kind", [
   godotPckMetadataSchema,
   godotPckEntryMetadataSchema,
   pyInstallerMetadataSchema,
   pyInstallerEntryMetadataSchema,
+  dotnetBundleEntryMetadataSchema,
 ]);
 export type ArtifactFormatMetadata = z.infer<
   typeof artifactFormatMetadataSchema

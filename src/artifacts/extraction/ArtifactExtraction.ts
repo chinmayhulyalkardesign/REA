@@ -7,6 +7,7 @@ import { lstat, realpath } from "node:fs/promises";
 import { compareUnicodeCodePoints } from "../../domain/unicodeCodePointOrder.js";
 import { digestCanonicalValue } from "../../domain/canonicalDigest.js";
 import { AsarArtifactReader } from "../AsarArtifactReader.js";
+import { DotnetBundleArtifactReader } from "../DotnetBundleArtifactReader.js";
 import { GodotPckArtifactReader } from "../GodotPckArtifactReader.js";
 import {
   ArtifactPathRegistry,
@@ -26,6 +27,7 @@ import { isZipPackageFormat } from "../../domain/zipPackageFormat.js";
 import { MachOSliceArtifactReader } from "../MachOSliceArtifactReader.js";
 import { PyInstallerArtifactReader } from "../PyInstallerArtifactReader.js";
 import { containsPyInstallerArchive } from "../pyinstaller/CArchiveLayout.js";
+import { findDotnetBundleHeader } from "../dotnet/DotnetBundle.js";
 import {
   artifactExtractionResultSchema,
   type ArtifactExtractionResult,
@@ -79,6 +81,17 @@ const extractArtifactInScope = async (
     asarHeaderAdmission: resolveAsarHeaderAdmission(input.environment),
     integrity: { mode: input.integrityPolicy },
   });
+  if (
+    (input.inputFormat === "pe" || input.inputFormat === "elf") &&
+    snapshot.manifest.root_format !== "dotnet-bundle" &&
+    snapshot.manifest.root_format !== "pyinstaller" &&
+    snapshot.manifest.root_format !== "godot-pck"
+  )
+    throw new AnalysisUnsupportedTargetError(
+      "extract_artifact",
+      input.inputPath,
+      `Artifact format has no extraction reader: ${input.inputFormat}`,
+    );
   return materializeArtifactInventoryInScope(
     input,
     sourcePath,
@@ -457,7 +470,10 @@ const requireExtractableFormat = async (
         abortIfNeeded(signal);
         const packaged = await containsPyInstallerArchive(handle, size, signal);
         abortIfNeeded(signal);
-        return packaged;
+        return (
+          packaged ||
+          (await findDotnetBundleHeader(handle, size, signal)) !== undefined
+        );
       },
     );
     if (!pack)
@@ -479,6 +495,8 @@ const createReader = async (
   containerFormat: ArtifactGraphManifest["root_format"],
   signal?: AbortSignal,
 ): Promise<ArtifactReader> => {
+  if (containerFormat === "dotnet-bundle")
+    return new DotnetBundleArtifactReader(path);
   const format = input.inputFormat;
   if (containerFormat === "godot-pck") return new GodotPckArtifactReader(path);
   if (containerFormat === "pyinstaller")

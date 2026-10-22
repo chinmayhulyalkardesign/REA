@@ -2935,6 +2935,55 @@ it("projects Ghidra startup failure and its incomplete cleanup together", async 
     });
 });
 
+describe("Ghidra procedure-name guidance", () => {
+  const rejectedName = async (
+    message: string,
+    remoteCode: "not_found" | "invalid_request",
+  ) => {
+    const ghidra = provider(installationHost(), () => ({
+      start: () => Promise.resolve(ok(sessionInfo())),
+      callTool: () =>
+        Promise.resolve(
+          err(
+            new GhidraSessionError(
+              "remote",
+              message,
+              { remote_code: remoteCode },
+              { remoteCode },
+            ),
+          ),
+        ),
+      close: () => Promise.resolve(ok(null)),
+    }));
+    const client = await createElfClient(ghidra);
+    const execution = await client.execute("procedure_pseudo_code", {
+      procedure: "transform_b",
+    });
+    if (execution.ok) throw new Error("Expected a Ghidra remote failure");
+    return projectAnalysisError(execution.error);
+  };
+
+  it("names the procedure-listing commands when the bridge rejects an unknown procedure name", async () => {
+    const projected = await rejectedName(
+      "Unknown Ghidra procedure name or address: transform_b",
+      "not_found",
+    );
+    expect(projected.remediation.action).toContain("list_procedures");
+    expect(projected.remediation.action).toContain("--kind procedures");
+  });
+
+  it("keeps generic input-schema guidance for other invalid_request remote failures", async () => {
+    const projected = await rejectedName(
+      "Procedure argument failed bridge validation",
+      "invalid_request",
+    );
+    expect(projected.remediation.action).toContain(
+      "Read the declared input schema",
+    );
+    expect(projected.remediation.action).not.toContain("list_procedures");
+  });
+});
+
 describe("Ghidra deadline guidance", () => {
   const timedOut = async (phase: "start" | "request", message: string) => {
     const failure = new GhidraSessionError(

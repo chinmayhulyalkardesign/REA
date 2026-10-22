@@ -108,14 +108,20 @@ export class AnalysisProtocolError extends AnalysisError {
 export class AnalysisInputError extends AnalysisError {
   readonly _tag = "AnalysisInputError";
   override readonly userMessage: string | undefined;
+  readonly remediationAction: string | undefined;
 
   constructor(
     readonly operation: string,
-    options?: AnalysisErrorOptions & { readonly userMessage?: string },
+    options?: AnalysisErrorOptions & {
+      readonly userMessage?: string;
+      /** Producer-specific correction when the caller needs a named recovery command. */
+      readonly remediationAction?: string;
+    },
     readonly issues: readonly AnalysisInputIssue[] = [],
   ) {
     super(`Invalid analysis input for ${operation}`, options);
     this.userMessage = options?.userMessage;
+    this.remediationAction = options?.remediationAction;
   }
 }
 

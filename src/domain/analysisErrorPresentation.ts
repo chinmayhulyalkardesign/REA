@@ -148,6 +148,11 @@ export const analysisErrorRemediationAction = (
     return "Wait until the selected file is stable. For an active binary session, reopen the target with open_binary before retrying so REA acquires its current identity; for a CLI command or target-free tool, rerun the operation.";
   if (error instanceof ConfigurationError && error.settings.length > 0)
     return `Correct ${[...new Set(error.settings.map(({ setting }) => setting))].join(", ")} in the environment that starts REA (your shell or the MCP client's registration), then rerun.`;
+  if (
+    error instanceof AnalysisInputError &&
+    error.remediationAction !== undefined
+  )
+    return error.remediationAction;
   if (error instanceof AnalysisInputError)
     return `Read the declared input schema or CLI usage for ${error.operation}; if using MCP and the catalog may be stale, call tools/list. Correct the listed fields, then retry. Do not repeat the unchanged call.`;
   if (

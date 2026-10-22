@@ -167,6 +167,16 @@ describe("CLI advertised input schemas", () => {
     );
   });
 
+  it("describes supported completed Evidence families in inspect-analysis-view help", async () => {
+    const cli = createCli({});
+    const help = await serve(cli, ["inspect-analysis-view", "--help"]);
+    expect(help.exitCode).toBe(0);
+    expect(help.stdout).toContain("Rust embedded dependencies");
+    expect(help.stdout).toContain("IL2CPP metadata");
+    expect(help.stdout).toContain("model-artifact");
+    expect(help.stdout).toContain("GPU code objects");
+  });
+
   it("advertises defaults as omittable on a mounted group root", async () => {
     const group = Cli.create("group", {
       args: z.object({ scope: z.enum(["all", "selected"]).default("all") }),

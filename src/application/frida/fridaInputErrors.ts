@@ -13,6 +13,19 @@ export const unknownFridaSession = (
     },
   ]);
 
+/** A session whose target already runs: an attach, or a spawn already resumed. */
+export const notPausedFridaSession = (
+  operation: string,
+  sessionId: string,
+): AnalysisInputError =>
+  new AnalysisInputError(operation, undefined, [
+    {
+      path: ["session_id"],
+      reason: "invalid_value",
+      message: `Frida session ${sessionId} is already running; only a paused spawn can be resumed, so skip resume_frida_session for attached or already-resumed sessions.`,
+    },
+  ]);
+
 /** A script ID that names no loaded script in the selected session. */
 export const unknownFridaScript = (
   operation: string,

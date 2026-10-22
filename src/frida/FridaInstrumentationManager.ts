@@ -37,6 +37,7 @@ import type { JsonValue } from "../domain/jsonValue.js";
 import { jsonStringByteLength } from "../domain/jsonStringByteLength.js";
 import { err, ok, type Result } from "../domain/result.js";
 import {
+  notPausedFridaSession,
   unknownFridaScript,
   unknownFridaSession,
 } from "../application/frida/fridaInputErrors.js";
@@ -557,13 +558,7 @@ export class FridaInstrumentationManager implements FridaInstrumentationPort {
     if (managed === undefined || managed.detached)
       return err(unknownFridaSession("resume_frida_session", sessionId));
     if (managed.mode !== "spawn" || managed.targetResumeObserved)
-      return err(
-        new AnalysisCapabilityUnavailableError(
-          "frida",
-          "resume_frida_session",
-          "Only a paused process spawned by this session can be resumed.",
-        ),
-      );
+      return err(notPausedFridaSession("resume_frida_session", sessionId));
     const pendingScripts = [...managed.scripts.values()].filter(
       (entry) => entry.state === "cleanup-pending" && !entry.script.isDestroyed,
     );

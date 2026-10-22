@@ -537,6 +537,43 @@ describe("FridaInstrumentationManager", () => {
     expect(bindings.device.session.isDetached()).toBe(true);
   });
 
+  it("refuses to resume a running session as a session_id input error", async () => {
+    const {
+      bindings,
+      manager,
+      started: attached,
+    } = await startLocalAttachedSession();
+    const spawned = await manager.startSession({
+      mode: "spawn",
+      deviceId: "local",
+      program: "/tmp/fixture",
+    });
+    if (!attached.ok) throw attached.error;
+    if (!spawned.ok) throw spawned.error;
+    expect((await manager.resumeSession(spawned.value.sessionId)).ok).toBe(
+      true,
+    );
+
+    for (const sessionId of [
+      attached.value.sessionId,
+      spawned.value.sessionId,
+    ]) {
+      const result = await manager.resumeSession(sessionId);
+      expect(result.ok).toBe(false);
+      if (result.ok) continue;
+      if (!(result.error instanceof AnalysisInputError)) throw result.error;
+      expect(result.error.issues).toContainEqual(
+        expect.objectContaining({
+          path: ["session_id"],
+          reason: "invalid_value",
+          message: expect.stringContaining("already running"),
+        }),
+      );
+    }
+    expect(bindings.device.resumed).toEqual([512]);
+    await manager.closeAll();
+  });
+
   it("removes a remote device after process discovery", async () => {
     const bindings = new FakeDeviceManager();
     const manager = new FridaInstrumentationManager({

@@ -54,6 +54,7 @@ import {
 import { AnalysisError } from "../domain/analysisErrorBase.js";
 import { analysisErrorWithCleanupFailure } from "../domain/analysisErrorCleanup.js";
 import { err, ok, type Result } from "../domain/result.js";
+import { readPngHeaderDimensions } from "../domain/pngHeader.js";
 import type { JsonValue } from "../domain/jsonValue.js";
 import { jsonObjectSchema } from "../domain/jsonValue.js";
 import {
@@ -113,7 +114,6 @@ import {
   parseFeatureListOutput,
   parsePackageChangeOutput,
   parseProcessListOutput,
-  parsePngDimensions,
   parseResolveActivityOutput,
   parseServiceListOutput,
   parseSettingsGetOutput,
@@ -2967,8 +2967,8 @@ export class AdbProvider {
       return err(
         new AnalysisCancelledError(operation, { cause: signal.reason }),
       );
-    const dimensions = parsePngDimensions(captured.value.stdout);
-    if (dimensions.width === null)
+    const dimensions = readPngHeaderDimensions(captured.value.stdout);
+    if (dimensions === undefined)
       return err(
         new AnalysisProtocolError(
           "screencap did not return a PNG payload; the device may not expose a display",

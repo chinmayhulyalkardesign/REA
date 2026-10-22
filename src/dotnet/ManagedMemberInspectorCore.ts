@@ -253,42 +253,37 @@ export const parseTypes = (
   return { types: items, issues, nesting };
 };
 
+const malformedSignature = (detail: string, offset: number): never => {
+  throw managedFailure("invalid-blob", "signature", detail, offset);
+};
+
 export const readCompressed = (
   bytes: Buffer,
   offset: number,
 ): { readonly value: number; readonly next: number } => {
   const first = bytes[offset];
   if (first === undefined)
-    throw managedFailure(
-      "invalid-blob",
-      "signature",
-      "truncated compressed integer",
-      offset,
-    );
+    return malformedSignature("truncated compressed integer", offset);
   if ((first & 0x80) === 0) return { value: first, next: offset + 1 };
-  const second = bytes[offset + 1];
-  if ((first & 0xc0) === 0x80 && second !== undefined)
+  if ((first & 0xc0) === 0x80) {
+    const second = bytes[offset + 1];
+    if (second === undefined)
+      return malformedSignature("truncated compressed integer", offset);
     return { value: ((first & 0x3f) << 8) | second, next: offset + 2 };
-  const b1 = bytes[offset + 1];
-  const b2 = bytes[offset + 2];
-  const b3 = bytes[offset + 3];
-  if (
-    (first & 0xe0) === 0xc0 &&
-    b1 !== undefined &&
-    b2 !== undefined &&
-    b3 !== undefined
-  )
+  }
+  if ((first & 0xe0) === 0xc0) {
+    const b1 = bytes[offset + 1];
+    const b2 = bytes[offset + 2];
+    const b3 = bytes[offset + 3];
+    if (b1 === undefined || b2 === undefined || b3 === undefined)
+      return malformedSignature("truncated compressed integer", offset);
     return {
       value:
         (first & 0x1f) * 0x01_00_00_00 + b1 * 0x01_00_00 + b2 * 0x0100 + b3,
       next: offset + 4,
     };
-  throw managedFailure(
-    "invalid-blob",
-    "signature",
-    "reserved compressed integer",
-    offset,
-  );
+  }
+  return malformedSignature("reserved compressed integer", offset);
 };
 
 const ELEMENT_TYPES = new Map<number, string>([
@@ -323,10 +318,6 @@ const readSignedCompressed = (
     value: encoded.value % 2 === 0 ? magnitude : magnitude - 2 ** (width - 1),
     next: encoded.next,
   };
-};
-
-const malformedSignature = (detail: string, offset: number): never => {
-  throw managedFailure("invalid-blob", "signature", detail, offset);
 };
 
 // Pending work while decoding one Type. Signatures nest arbitrarily deep, so

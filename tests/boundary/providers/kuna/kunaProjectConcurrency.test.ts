@@ -129,6 +129,8 @@ it.each([true, false])(
       const closed = await cache.close();
       if (!closed.ok) throw closed.error;
     });
+    // A fresh worker's first two concurrent builds can take longer than
+    // expect.poll's 1 s default to publish (about 1.1 s on macOS arm64).
     await expect
       .poll(() => actual.readdir(listing.directory).catch(() => []), {
         timeout: 10_000,

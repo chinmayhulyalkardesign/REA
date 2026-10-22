@@ -188,6 +188,63 @@ it("verifies a P/Invoke declaration against native export Evidence", () => {
   });
 });
 
+it("leaves runtime-provided methods out of unresolved native bodies", () => {
+  const input = exampleInput();
+  const managed = input.managed_boundaries;
+  const normalized = managedNativeBoundaryInspectionSchema.parse(
+    managed.normalized_result,
+  );
+  const implementation = {
+    row_offset: 0,
+    flags: 0x01c6,
+    managed_kind: "managed" as const,
+    pinvoke_declared: false,
+  };
+  const withImplementations = createEvidence(undefined, managed.provider, {
+    operation: managed.operation,
+    parameters: managed.parameters,
+    result: {
+      ...normalized,
+      native_implementations: [
+        // A delegate's Invoke: MethodImplAttributes.Runtime, supplied by the CLR.
+        {
+          ...implementation,
+          token: "0x06000002",
+          name: "Invoke",
+          rva: 0,
+          impl_flags: 0x0003,
+          code_type: "runtime" as const,
+          boundary_kind: "runtime-provided" as const,
+          body_interpretation: "not-file-backed" as const,
+        },
+        {
+          ...implementation,
+          token: "0x06000003",
+          name: "NativeBody",
+          rva: 0x2050,
+          impl_flags: 0x0001,
+          code_type: "native" as const,
+          boundary_kind: "native-body" as const,
+          body_interpretation: "native-or-runtime" as const,
+        },
+      ],
+    },
+    rawResult: null,
+  });
+
+  const result = verifyManagedNativeBoundaries({
+    ...input,
+    managed_boundaries: withImplementations,
+  });
+
+  expect(result.summary).toMatchObject({
+    verified: 1,
+    native_body_unresolved: 1,
+  });
+  expect(result.native_implementations.unresolved).toBe(1);
+  expect(result.managed_boundary.native_implementations_total).toBe(2);
+});
+
 it("treats a Mach-O ABI-prefixed export as an exact declared import", () => {
   const result = verifyManagedNativeBoundaries({
     ...exampleInput(),

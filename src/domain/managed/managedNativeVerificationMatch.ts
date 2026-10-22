@@ -372,8 +372,11 @@ export const buildVerificationResult = ({
   "verification_id"
 > => {
   const counts = countStatuses(pinvokeImports);
+  // P/Invokes are verified by name above, and runtime-provided methods (such
+  // as delegate Invoke) are supplied by the CLR with no native body to map.
   const nativeBodyUnresolved = managed.native_implementations.filter(
-    ({ boundary_kind: kind }) => kind !== "pinvoke",
+    ({ boundary_kind: kind }) =>
+      kind !== "pinvoke" && kind !== "runtime-provided",
   ).length;
   const coverage: ManagedNativeVerificationResult["coverage"] = {
     status:

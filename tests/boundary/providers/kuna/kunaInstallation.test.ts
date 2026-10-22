@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import {
+  appendFile,
   chmod,
   readFile,
   realpath,
@@ -400,3 +401,47 @@ it("preserves an already-cancelled caller before admitting a lookup", async () =
   );
   expect(kunaInstallationCancellation(cause)?.reason).toBe(reason);
 });
+
+// Independent regression test for the TOCTOU race in inspectKunaInstallation.
+// Upstream fix (morluto/rea 04ae07ab8) addresses the same race; this test
+// provides a second verification from a different setup path.
+it("rejects a version/digest pair when the executable is replaced during the probe", async () => {
+  const root = await createTestTempDirectory("rea-kuna-toctou-");
+  const gate = join(root, "release");
+  const kuna = await writeFakeKuna(root, {
+    version: { stdout: "kuna 1.833\n", gate },
+  });
+  const pending = inspectKunaInstallation({
+    REA_KUNA_COMMAND: kuna,
+    REA_KUNA_CACHE_DIR: join(root, "cache"),
+  });
+  try {
+    await expect
+      .poll(() => fakeKunaCalls(kuna).then((calls) => calls.length), {
+        timeout: 5000,
+      })
+      .toBeGreaterThan(0);
+    // Change the executable's bytes while the running probe still holds the old ones.
+    await appendFile(kuna, "\n// replaced during probe\n");
+  } finally {
+    await writeFile(gate, "release");
+  }
+
+  const result = await pending;
+  expect(result).toMatchObject({
+    ok: false,
+    error: {
+      code: "version_unresolved",
+      diagnostics: {
+        executable: await realpath(kuna),
+        version: "1.833",
+        before_sha256: expect.any(String),
+        after_sha256: expect.any(String),
+      },
+    },
+  });
+  if (!result.ok)
+    expect(result.error.diagnostics["before_sha256"]).not.toBe(
+      result.error.diagnostics["after_sha256"],
+    );
+}, 10_000);

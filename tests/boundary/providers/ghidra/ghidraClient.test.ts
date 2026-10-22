@@ -12,6 +12,7 @@ import {
   access,
   chmod,
   mkdir,
+  readFile,
   writeFile,
   open,
   type FileHandle,
@@ -31,6 +32,7 @@ import { ProviderRunLineage } from "../../../../src/process/ProviderRunLineage.j
 import { PrivateRuntimeRoot } from "../../../../src/process/PrivateRuntimeRoot.js";
 import { OwnedFileHandle } from "../../../../src/filesystem/OwnedFileHandle.js";
 import { GHIDRA_PROCESS_DIAGNOSTIC_BYTES } from "../../../../src/ghidra/GhidraDiagnostics.js";
+import { readWindowsPrivateRuntimeFile } from "../../../../src/windows/WindowsPrivateRuntime.js";
 import {
   GhidraHeadlessLauncher,
   GhidraLaunchError,
@@ -51,6 +53,7 @@ import { createTestTempDirectory } from "../../../fixtures/temporaryDirectory.js
 import {
   GhidraFixtureLauncher as FixtureLauncher,
   ghidraFixturePath as fixturePath,
+  ghidraFixtureHost,
 } from "./ghidraClient.fixture.js";
 
 const PROFILE_DIGEST = "a".repeat(64);
@@ -58,8 +61,7 @@ const PROVIDER_VERSION = "12.1.4";
 const TARGET_SHA256 = createHash("sha256")
   .update(readFileSync(fixturePath))
   .digest("hex");
-const HOST_TRANSPORT: GhidraTransportKind =
-  process.platform === "win32" ? "authenticated-loopback-tcp" : "unix-socket";
+const HOST_TRANSPORT: GhidraTransportKind = ghidraFixtureHost.transport;
 
 const preExitedProcessLauncher = (options: {
   readonly output: string;
@@ -168,6 +170,65 @@ describe("GhidraClient ready-only dispatch", () => {
     expect(launcher.processes).toHaveLength(1);
   });
 });
+
+it.skipIf(process.platform !== "win32")(
+  "waits for endpoint publication before exposing the fixture process",
+  async () => {
+    const fixture = new FixtureLauncher("gated_endpoint");
+    let launchReturned = false;
+    const client = clientFor({
+      async launch(session, options) {
+        const result = await fixture.launch(session, options);
+        launchReturned = true;
+        return result;
+      },
+    });
+    const started = client.start();
+    const child = await fixture.endpointOpen;
+    try {
+      expect(await readFile(fixture.endpointPaths[0] ?? "", "utf8")).toBe("");
+      expect(
+        readWindowsPrivateRuntimeFile(fixture.endpointPaths[0] ?? ""),
+      ).toBe("");
+      expect(launchReturned).toBe(false);
+      child.send("publish-endpoint");
+      await expect(started).resolves.toMatchObject({ ok: true });
+      expect(launchReturned).toBe(true);
+      await expect(client.callTool("list_strings", {})).resolves.toMatchObject({
+        ok: true,
+      });
+    } finally {
+      if (child.connected) child.send("publish-endpoint");
+      await started;
+      await client.close();
+    }
+    await expect(waitForChildExit(child, 5_000)).resolves.toBe(true);
+    await expect(access(fixture.runtimeRoots[0] ?? "")).rejects.toMatchObject({
+      code: "ENOENT",
+    });
+  },
+);
+
+it.skipIf(process.platform !== "win32")(
+  "retains the fixture child for cleanup when cancelled before publication",
+  async () => {
+    const fixture = new FixtureLauncher("gated_endpoint");
+    const client = clientFor(fixture);
+    const controller = new AbortController();
+    const started = client.start(controller.signal);
+    const child = await fixture.endpointOpen;
+    controller.abort();
+    await expect(started).resolves.toMatchObject({
+      ok: false,
+      error: { kind: "cancelled" },
+    });
+    await expect(waitForChildExit(child, 5_000)).resolves.toBe(true);
+    await expect(access(fixture.runtimeRoots[0] ?? "")).rejects.toMatchObject({
+      code: "ENOENT",
+    });
+    await expect(client.close()).resolves.toMatchObject({ ok: true });
+  },
+);
 
 it("reports unknown startup work and stops notifications when cancellation releases the process", async () => {
   vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
@@ -1556,7 +1617,8 @@ describe("GhidraClient cleanup and diagnostics", () => {
   it("makes double close idempotent and releases its process runtime", async () => {
     const launcher = new FixtureLauncher();
     const client = clientFor(launcher);
-    await expect(client.start()).resolves.toMatchObject({ ok: true });
+    const started = await client.start();
+    if (!started.ok) throw started.error;
 
     await Promise.all([client.close(), client.close()]);
     await client.close();

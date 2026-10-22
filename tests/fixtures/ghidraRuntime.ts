@@ -14,7 +14,7 @@ export const createGhidraTestRuntime = (
 
 /** Publish a closed endpoint file with the provider child's actual file owner. */
 export const publishGhidraTestEndpoint = async (
-  runtime: PrivateRuntimeRoot,
+  runtime: Pick<PrivateRuntimeRoot, "path">,
   content: string,
 ): Promise<string> => {
   const path = join(runtime.path, "bridge-endpoint.json");

@@ -1,4 +1,4 @@
-import { rename, rm, writeFile } from "node:fs/promises";
+import { open, rename, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:net";
 
 const configuration = JSON.parse(
@@ -64,11 +64,14 @@ const writeThen = (stream, text, then) =>
 
 if (mode === "exit") process.exit(73);
 if (mode === "flood_silent") {
+  process.send?.({ event: "fixture-ready" });
   await floodStdout();
   setInterval(() => undefined, 1_000);
-} else if (mode === "silent") setInterval(() => undefined, 1_000);
-else {
-  await rm(endpointPath, { force: true });
+} else if (mode === "silent") {
+  process.send?.({ event: "fixture-ready" });
+  setInterval(() => undefined, 1_000);
+} else {
+  if (process.platform !== "win32") await rm(endpointPath, { force: true });
   const sockets = new Set();
   let rejectedConnections = 0;
   const server = createServer((socket) => {
@@ -100,21 +103,45 @@ else {
     for (const socket of sockets) socket.destroy();
     process.send?.({ event: "disconnected" });
   });
-  if (transport === "unix-socket") server.listen(endpointPath);
+  if (transport === "unix-socket")
+    server.listen(endpointPath, () =>
+      process.send?.({ event: "fixture-ready" }),
+    );
   else {
     server.listen(0, "127.0.0.1", async () => {
       const address = server.address();
       if (address === null || typeof address === "string") process.exit(65);
-      const pending = `${endpointPath}.pending`;
-      await writeFile(
-        pending,
-        `${JSON.stringify({
-          host: "127.0.0.1",
-          port: address.port,
-        })}\n`,
-        { flag: "wx" },
-      );
-      await rename(pending, endpointPath);
+      const encoded = `${JSON.stringify({
+        host: "127.0.0.1",
+        port: address.port,
+      })}\n`;
+      if (process.platform === "win32") {
+        // The launcher exclusively creates this empty file with an owned
+        // writer, so elevated runners retain the current-user owner. Reopening
+        // it preserves that owner; fixture-ready still follows the final close.
+        const file = await open(endpointPath, "r+");
+        try {
+          if (mode === "gated_endpoint") {
+            await new Promise((resolve) => {
+              const publish = (message) => {
+                if (message !== "publish-endpoint") return;
+                process.off("message", publish);
+                resolve();
+              };
+              process.on("message", publish);
+              process.send?.({ event: "endpoint-open" });
+            });
+          }
+          await file.writeFile(encoded);
+        } finally {
+          await file.close();
+        }
+      } else {
+        const pending = `${endpointPath}.pending`;
+        await writeFile(pending, encoded, { flag: "wx" });
+        await rename(pending, endpointPath);
+      }
+      process.send?.({ event: "fixture-ready" });
     });
   }
 }

@@ -25,6 +25,7 @@ import { silentLogger } from "../../../src/logger.js";
 import { createServer } from "../../../src/server/createServer.js";
 import { parseMcpToolError } from "../../fixtures/mcpToolError.js";
 import { createTestTempDirectory } from "../../fixtures/temporaryDirectory.js";
+import { publishGhidraTestEndpoint } from "../../fixtures/ghidraRuntime.js";
 import { waitForExit } from "../../support/process/processFixture.js";
 
 const fixturePath = fileURLToPath(
@@ -46,6 +47,8 @@ class FixtureLauncher implements GhidraLauncher {
   async launch(session: GhidraLaunchSession) {
     const projectRoot = join(session.runtimeRoot, "project");
     await mkdir(projectRoot, { recursive: true });
+    if (process.platform === "win32")
+      await publishGhidraTestEndpoint({ path: session.runtimeRoot }, "");
     const child = spawn(process.execPath, [fixturePath], {
       stdio: ["ignore", "pipe", "pipe", "ipc"],
       env: {

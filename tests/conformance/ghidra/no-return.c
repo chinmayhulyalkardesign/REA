@@ -6,6 +6,10 @@ extern void *__tls_get_addr(void *);
 extern int *__errno_location(void);
 extern void rea_unknown_stop(void);
 extern void _Unwind_Resume(void *) __attribute__((noreturn));
+/* C-linkage declarations of Itanium C++ ABI runtime symbols: Ghidra demangles
+   _Znwm to operator.new, so only the original imported name identifies it. */
+extern void *_Znwm(unsigned long);
+extern int __cxa_guard_acquire(long long *);
 volatile unsigned long rea_after_call;
 
 void *rea_malloc(size_t n) {
@@ -45,6 +49,16 @@ void *rea_memset(void *out, int c, size_t n) {
 }
 size_t rea_strlen(const char *p) {
     size_t value = strlen(p);
+    rea_after_call++;
+    return value;
+}
+void *rea_operator_new(unsigned long n) {
+    void *value = _Znwm(n);
+    rea_after_call++;
+    return value;
+}
+int rea_guard_acquire(long long *guard) {
+    int value = __cxa_guard_acquire(guard);
     rea_after_call++;
     return value;
 }

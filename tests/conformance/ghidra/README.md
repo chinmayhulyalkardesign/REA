@@ -23,7 +23,8 @@ binaries and Ghidra projects are never committed.
   exported entry, direct and indirect calls, a volatile string reference, and a
   multi-block branch across loaders.
 - `no-return.c` and `ReaNoReturnProbe.java` inject incorrect import flags into a
-  real ELF or Mach-O analysis database, verify caller recovery, propagated flag
+  real ELF or Mach-O analysis database, including the demangled C++ runtime
+  imports `_Znwm` and `__cxa_guard_acquire`, verify caller recovery, propagated flag
   repair and signature preservation, and retain genuine/unknown no-return calls
   and independently identified entries. Run `npm run build:cached`, then
   `node scripts/verify-real-ghidra-noreturn.mjs` with the Ghidra/JDK environment

@@ -17,6 +17,9 @@ native-analysis provider. Static artifact observations, passive runtime
 observations, relationship inferences, and unknown or unavailable facts retain
 their original graph authority.
 
+For proof-gated static rewriting of one local JavaScript source without executing
+it, see [js-redox deobfuscation](javascript-deobfuscation.md).
+
 `analyze_javascript_application` Evidence retains the structural JavaScript
 Application Graph and a separate semantic relation graph bound to the same root
 artifact digest and structural graph ID. Semantic tracing requires the semantic

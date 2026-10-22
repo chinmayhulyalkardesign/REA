@@ -107,6 +107,26 @@ it("collects a real owned command and verifies its exit before returning diagnos
   });
 });
 
+it("exposes exact retained bytes separately from protocol snapshots", async () => {
+  let retained: Buffer | undefined;
+  const result = await runOwnedCommand(
+    command("process.stderr.write(Buffer.from([0xff, 0x61]))"),
+    {
+      timeoutMs: 2_000,
+      diagnosticBytes: 1024,
+      observeCompleted: (snapshot, output) => {
+        expect(snapshot.stderr.invalidUtf8).toBe(true);
+        expect(snapshot.stderr).not.toHaveProperty("rawBytes");
+        if (output === undefined)
+          throw new Error("runOwnedCommand omitted retained diagnostic bytes");
+        retained = output.stderr;
+      },
+    },
+  );
+  expect(result.stderr).not.toHaveProperty("rawBytes");
+  expect(retained).toEqual(Buffer.from([0xff, 0x61]));
+});
+
 it.each([0, 2])(
   "observes complete accepted output once before final cleanup (exit %s)",
   async (exitCode) => {

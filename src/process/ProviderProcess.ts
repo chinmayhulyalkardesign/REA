@@ -134,6 +134,12 @@ export interface ProviderProcessSnapshot {
   readonly outputIncomplete?: true;
 }
 
+/** Exact retained diagnostic bytes, kept separate from protocol-facing snapshots. */
+export interface ProviderProcessRetainedOutput {
+  readonly stdout: Buffer;
+  readonly stderr: Buffer;
+}
+
 declare const processOutputCheckpointBrand: unique symbol;
 /** Opaque cursor into one supervisor's raw, byte-counted output history. */
 export interface ProviderProcessOutputCheckpoint {
@@ -440,6 +446,14 @@ export class ProviderProcessSupervisor {
         ? { memoryLimitReached: true }
         : {}),
       ...(outputIncomplete ? { outputIncomplete: true } : {}),
+    };
+  }
+
+  /** Copy exact retained diagnostic bytes without changing snapshot shape. */
+  retainedOutput(): ProviderProcessRetainedOutput {
+    return {
+      stdout: this.#stdout.snapshotBytes(),
+      stderr: this.#stderr.snapshotBytes(),
     };
   }
 
@@ -842,11 +856,12 @@ class ProcessOutputCapture {
     this.#chunks.push(Buffer.from(chunk));
   }
 
+  snapshotBytes(): Buffer {
+    return Buffer.concat(this.#chunks, this.#bytes);
+  }
+
   snapshot(observedBytes: number): ProviderProcessSnapshot["stdout"] {
-    return this.#snapshotBuffer(
-      Buffer.concat(this.#chunks, this.#bytes),
-      observedBytes,
-    );
+    return this.#snapshotBuffer(this.snapshotBytes(), observedBytes);
   }
 
   snapshotRange(

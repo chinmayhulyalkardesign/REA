@@ -14,6 +14,13 @@ import type { ProviderProcessSupervisor } from "../process/ProviderProcess.js";
 import { inspectApktoolClient } from "./ApktoolConfiguration.js";
 import { ApktoolProvider } from "./ApktoolProvider.js";
 
+const retainedOutputForTest = (
+  snapshot: Awaited<ReturnType<typeof runOwnedCommand>>,
+) => ({
+  stdout: Buffer.from(snapshot.stdout.text),
+  stderr: Buffer.from(snapshot.stderr.text),
+});
+
 vi.mock("../process/OwnedCommand.js", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../process/OwnedCommand.js")>()),
   runOwnedCommand: vi.fn(),
@@ -39,7 +46,7 @@ it("runs the version probe as an owned interpreter-script process group", async 
       stdout: { text: "2.9.3\n" },
       stderr: { text: "" },
     } as Awaited<ReturnType<typeof runOwnedCommand>>;
-    limits.observeCompleted?.(output);
+    limits.observeCompleted?.(output, retainedOutputForTest(output));
     return output;
   });
   await expect(
@@ -175,7 +182,7 @@ it.each(["linux", "win32"] as const)(
           stdout: { text: "2.9.2\n" },
           stderr: { text: "" },
         } as Awaited<ReturnType<typeof runOwnedCommand>>;
-        limits.observeCompleted?.(output);
+        limits.observeCompleted?.(output, retainedOutputForTest(output));
         return output;
       },
     );

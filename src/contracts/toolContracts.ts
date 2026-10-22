@@ -33,6 +33,7 @@ import { WEB_SCRIPT_TOOL_CONTRACTS } from "./webScriptToolContracts.js";
 import { WEB_RUNTIME_TOOL_CONTRACTS } from "./webRuntimeToolContracts.js";
 import { WEB_NETWORK_CAPTURE_TOOL_CONTRACTS } from "./webNetworkCaptureToolContracts.js";
 import { JAVASCRIPT_RECOVERY_TOOL_CONTRACTS } from "./javascript/javascriptRecoveryToolContracts.js";
+import { JAVASCRIPT_DEOBFUSCATION_TOOL_CONTRACTS } from "./javascript/javascriptDeobfuscationToolContracts.js";
 import { OFFICIAL_TOOL_CONTRACTS } from "./officialToolContracts.js";
 import { ENHANCED_TOOL_CONTRACTS } from "./enhancedToolContracts.js";
 import { SESSION_TOOL_CONTRACTS } from "./sessionToolContracts.js";
@@ -81,6 +82,7 @@ export const TOOL_CONTRACTS = [
   ...WEB_RUNTIME_TOOL_CONTRACTS,
   ...WEB_NETWORK_CAPTURE_TOOL_CONTRACTS,
   ...JAVASCRIPT_RECOVERY_TOOL_CONTRACTS,
+  ...JAVASCRIPT_DEOBFUSCATION_TOOL_CONTRACTS,
   ...SESSION_TOOL_CONTRACTS,
   ...CUTTER_TOOL_CONTRACTS,
   ...REVERSE_ENGINEERING_TOOL_CONTRACTS,

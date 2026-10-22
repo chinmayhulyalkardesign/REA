@@ -23,6 +23,7 @@ export interface SessionAvailabilityDefaults {
     | "electronAutomationEnabled"
     | "v8InspectorObservationEnabled"
     | "javascriptRecoveryEnabled"
+    | "javascriptDeobfuscationEnabled"
     | "webModuleResolutionEnabled"
     | "binaryLayoutEnabled"
     | "recordedCrashEnabled"
@@ -70,6 +71,8 @@ export const sessionAvailabilityPolicy = (
         defaults.optionalFeatures?.firmwareExtractionEnabled ?? false,
       javascriptRecoveryEnabled:
         defaults.optionalFeatures?.javascriptRecoveryEnabled ?? false,
+      javascriptDeobfuscationEnabled:
+        defaults.optionalFeatures?.javascriptDeobfuscationEnabled ?? false,
       webModuleResolutionEnabled:
         defaults.optionalFeatures?.webModuleResolutionEnabled ?? false,
       browserObservationEnabled:

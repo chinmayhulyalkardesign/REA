@@ -23,6 +23,7 @@ const HOST_RESTRICTED_TOOLS = [
   ["inspect_binary_layout", "linux-x64"],
   ["inspect_recorded_crash", "linux-x64"],
   ["recover_javascript_sources", "linux-x64"],
+  ["deobfuscate_javascript_source", "linux-x64"],
   ["inspect_evm_interface", "linux-x64"],
 ] as const;
 
@@ -77,6 +78,7 @@ const connect = async (
         REA_UNBLOB_COMMAND: path("unblob"),
         REA_PWNTOOLS_PYTHON: path("python3"),
         REA_WAKARU_COMMAND: path("wakaru"),
+        REA_JS_REDOX_COMMAND: path("deobfuscate-safe"),
         REA_EVM_PRLIMIT_COMMAND: path("missing-prlimit"),
         REA_MCP_OUTPUT_SCHEMA_PROFILE: "off",
       },

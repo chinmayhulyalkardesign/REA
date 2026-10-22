@@ -1135,6 +1135,14 @@ export class GdbSessionManager {
       AnalysisError
     >
   > {
+    const unavailable = (): AnalysisInputError =>
+      new AnalysisInputError("gdb_console", undefined, [
+        {
+          path: ["session_id"],
+          reason: "invalid_value",
+          message: "GDB session is unavailable or closed.",
+        },
+      ]);
     const session = this.#sessions.get(sessionId);
     if (
       this.#closing ||
@@ -1143,23 +1151,21 @@ export class GdbSessionManager {
       session.exited ||
       session.protocolError !== undefined
     )
-      return err(
-        new AnalysisInputError("gdb_console", undefined, [
-          {
-            path: ["session_id"],
-            reason: "invalid_value",
-            message: "GDB session is unavailable or closed.",
-          },
-        ]),
-      );
+      return err(unavailable());
     if (signal?.aborted)
       return err(cancelledWithCallerReason("gdb_console", signal));
     try {
       const completed = await this.#serialize(
         session,
         async () => {
-          if (session.exited || session.protocolError !== undefined)
-            return err(new AnalysisInputError("gdb_console"));
+          // closeAll() and close() can begin while this command waits its turn.
+          if (
+            this.#closing ||
+            this.#sessions.get(sessionId) !== session ||
+            session.exited ||
+            session.protocolError !== undefined
+          )
+            return err(unavailable());
           session.noInferiorVerified = false;
           session.knownInferiorIdentities.clear();
           if (commandMayChangeInferiorOutput(command))
@@ -1371,6 +1377,9 @@ export class GdbSessionManager {
       return await this.#serialize(
         session,
         async () => {
+          // An earlier close can remove this session while this close waits.
+          if (this.#sessions.get(sessionId) !== session)
+            return err(new AnalysisInputError("close_gdb_session"));
           if (session.exited) {
             const stopped = await this.#stopDebuggerOnly(session);
             if (stopped.status === "incomplete")

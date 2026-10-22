@@ -14,6 +14,8 @@ import { BinaryReader } from "@bufbuild/protobuf/wire";
 import type { ProtobufField } from "../../../domain/protobufWire.js";
 import { WEB_NETWORK_CAPTURE_LIMITS } from "../../../domain/webNetworkCapture.js";
 import { CaptureFormatError } from "../CaptureFormatError.js";
+import { AnalysisInputError } from "../../../domain/analysisErrorCore.js";
+import { err, ok, type Result } from "../../../domain/result.js";
 import {
   decodeProtobufWire,
   readProtobufVarint,
@@ -38,6 +40,22 @@ const scalarWire = (scalar: ScalarType): ProtobufField["wire_type"] => {
 
 const floatingValue = (value: number): string =>
   Object.is(value, -0) ? "-0" : String(value);
+
+/** Admission owns the rejected field; SDK exception text stays internal. */
+const schemaFailure = (
+  field: "descriptor_set_path" | "message_type",
+  message: string,
+  cause?: unknown,
+): Result<never, AnalysisInputError> =>
+  err(
+    new AnalysisInputError("inspect_web_network_capture", { cause }, [
+      {
+        path: ["protobuf", "schema", field],
+        reason: field === "message_type" ? "invalid_value" : "invalid_format",
+        message,
+      },
+    ]),
+  );
 
 /** Qualified names can expand a small descriptor into a much larger registry. */
 const chargeRegistryExpansion = async (
@@ -131,7 +149,8 @@ export class ProtobufSchema implements WireSchema {
     typeName: string,
     budget: ProtobufBudget,
     redact: (text: string) => string,
-  ): Promise<ProtobufSchema> {
+  ): Promise<Result<ProtobufSchema, AnalysisInputError>> {
+    await budget.checkpoint();
     // Bound the object expansion of the descriptor before the SDK allocates its message tree.
     const checked = await decodeProtobufWire(
       bytes,
@@ -142,24 +161,52 @@ export class ProtobufSchema implements WireSchema {
       redact,
       new ProtobufSchema(FileDescriptorSetSchema, budget, redact),
     );
-    if (
-      checked.error !== undefined ||
-      checked.fields.some((field) => field.schema_status === "invalid-message")
-    )
-      throw new Error("Malformed FileDescriptorSet wire format");
-    const descriptor = fromBinary(FileDescriptorSetSchema, bytes, {
-      readUnknownFields: false,
-      recursionLimit: WEB_NETWORK_CAPTURE_LIMITS.depth,
-    });
-    await chargeRegistryExpansion(descriptor, budget);
-    const message = createFileRegistry(descriptor).getMessage(
-      typeName.replace(/^\./, ""),
+    const invalidMessage = checked.fields.find(
+      (field) => field.schema_status === "invalid-message",
     );
+    if (checked.error !== undefined || invalidMessage !== undefined) {
+      const issue = checked.error ?? invalidMessage?.schema_error;
+      return schemaFailure(
+        "descriptor_set_path",
+        issue === undefined
+          ? "Malformed FileDescriptorSet wire format"
+          : `Malformed FileDescriptorSet wire format at byte ${issue.offset}: ${issue.reason}`,
+        issue,
+      );
+    }
+    let descriptor: FileDescriptorSet;
+    try {
+      descriptor = fromBinary(FileDescriptorSetSchema, bytes, {
+        readUnknownFields: false,
+        recursionLimit: WEB_NETWORK_CAPTURE_LIMITS.depth,
+      });
+    } catch (cause) {
+      return schemaFailure(
+        "descriptor_set_path",
+        "The selected FileDescriptorSet cannot be decoded with the descriptor schema",
+        cause,
+      );
+    }
+    // Budget and cancellation failures keep their original classification.
+    await chargeRegistryExpansion(descriptor, budget);
+    let message: DescMessage | undefined;
+    try {
+      message = createFileRegistry(descriptor).getMessage(
+        typeName.replace(/^\./, ""),
+      );
+    } catch (cause) {
+      return schemaFailure(
+        "descriptor_set_path",
+        "The selected FileDescriptorSet contains invalid or unresolved descriptor definitions",
+        cause,
+      );
+    }
     if (message === undefined)
-      throw new Error(
+      return schemaFailure(
+        "message_type",
         "The supplied descriptor set does not define the selected message type",
       );
-    return new ProtobufSchema(message, budget, redact);
+    return ok(new ProtobufSchema(message, budget, redact));
   }
 
   reset(): void {

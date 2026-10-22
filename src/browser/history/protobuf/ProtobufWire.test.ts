@@ -126,12 +126,14 @@ it("keeps enum numbers separate from every declared alias", async () => {
     }),
   );
   const budget = new ProtobufBudget();
-  const schema = await ProtobufSchema.read(
+  const admitted = await ProtobufSchema.read(
     bytes,
-    "aliases.Message",
+    ".aliases.Message",
     budget,
     same,
   );
+  if (!admitted.ok) throw admitted.error;
+  const schema = admitted.value;
   const decoded = await decodeProtobufBody(
     Buffer.from([8, 0, 21, 0, 0, 0, 128]),
     "raw",
@@ -328,12 +330,14 @@ it("uses supplied descriptors without replacing wire values and preserves schema
     }),
   );
   const budget = new ProtobufBudget();
-  const schema = await ProtobufSchema.read(
+  const admitted = await ProtobufSchema.read(
     descriptor,
     "sample.Message",
     budget,
     same,
   );
+  if (!admitted.ok) throw admitted.error;
+  const schema = admitted.value;
   const body = Buffer.from("0801120568656c6c6f1a020801220201023801", "hex");
   const decoded = await decodeProtobufBody(
     body,
@@ -403,12 +407,14 @@ it("stops before exhausting fact capacity and yields for caller cancellation", a
 
 it("preserves a leading Unicode BOM in both the wire string and schema interpretation", async () => {
   const budget = new ProtobufBudget();
-  const schema = await ProtobufSchema.read(
+  const admitted = await ProtobufSchema.read(
     protobufCaptureDescriptor(),
     "capture.Message",
     budget,
     same,
   );
+  if (!admitted.ok) throw admitted.error;
+  const schema = admitted.value;
   const bytes = Buffer.from("0a08efbbbf68656c6c6f", "hex");
   const result = await decodeProtobufWire(
     bytes,
@@ -458,12 +464,14 @@ it("keeps bad nested schema interpretations local and preserves subsequent outer
     }),
   );
   const budget = new ProtobufBudget();
-  const schema = await ProtobufSchema.read(
+  const admitted = await ProtobufSchema.read(
     descriptor,
     "nested.Message",
     budget,
     same,
   );
+  if (!admitted.ok) throw admitted.error;
+  const schema = admitted.value;
   const bytes = Buffer.from("0a01ff1001", "hex");
   const result = await decodeProtobufWire(
     bytes,
@@ -489,12 +497,14 @@ it("keeps bad nested schema interpretations local and preserves subsequent outer
 it("yields and preserves the cancellation reason inside one large packed interpretation", async () => {
   const abort = new AbortController();
   const budget = new ProtobufBudget(abort.signal);
-  const schema = await ProtobufSchema.read(
+  const admitted = await ProtobufSchema.read(
     protobufCaptureDescriptor(),
     "capture.Message",
     budget,
     same,
   );
+  if (!admitted.ok) throw admitted.error;
+  const schema = admitted.value;
   // Field 2, length 100000, followed by 100000 independently expected uint32 ones.
   const bytes = Buffer.concat([
     Buffer.from([18, 160, 141, 6]),
@@ -522,7 +532,94 @@ it("rejects malformed descriptor wire even when the SDK would skip the unknown f
     "0a1a0a07742e70726f746f22030a014d980680808080808080808002",
     "hex",
   );
-  await expect(
-    ProtobufSchema.read(bytes, "M", new ProtobufBudget(), same),
-  ).rejects.toThrow("Malformed FileDescriptorSet wire format");
+  const result = await ProtobufSchema.read(
+    bytes,
+    "M",
+    new ProtobufBudget(),
+    same,
+  );
+  expect(result.ok).toBe(false);
+  if (result.ok) throw new Error("Expected descriptor admission failure");
+  expect(result.error.issues).toMatchObject([
+    {
+      path: ["protobuf", "schema", "descriptor_set_path"],
+      reason: "invalid_format",
+      message:
+        "Malformed FileDescriptorSet wire format at byte 16: Truncated or overflowing uint64 varint",
+    },
+  ]);
+  expect(result.error.cause).toEqual({
+    offset: 16,
+    reason: "Truncated or overflowing uint64 varint",
+  });
 });
+
+it.each([
+  ["missing type", protobufCaptureDescriptor(), "message_type"],
+  ["empty valid descriptor", Buffer.alloc(0), "message_type"],
+  [
+    "SDK descriptor decoding",
+    Buffer.from("0a050d00000000", "hex"),
+    "descriptor_set_path",
+  ],
+  [
+    "unresolved import",
+    toBinary(
+      FileDescriptorSetSchema,
+      create(FileDescriptorSetSchema, {
+        file: [
+          {
+            name: "dependent.proto",
+            package: "capture",
+            syntax: "proto3",
+            dependency: ["missing.proto"],
+            messageType: [{ name: "Message" }],
+          },
+        ],
+      }),
+    ),
+    "descriptor_set_path",
+  ],
+] as const)(
+  "retains the failing schema admission stage: %s",
+  async (_label, bytes, field) => {
+    const result = await ProtobufSchema.read(
+      bytes,
+      "capture.Missing",
+      new ProtobufBudget(),
+      same,
+    );
+    expect(result.ok).toBe(false);
+    if (result.ok) throw new Error("Expected schema failure");
+    expect(result.error.issues).toMatchObject([
+      {
+        path: ["protobuf", "schema", field],
+        reason: field === "message_type" ? "invalid_value" : "invalid_format",
+      },
+    ]);
+    if (field === "descriptor_set_path")
+      expect(result.error.cause).toBeInstanceOf(Error);
+    // Library diagnostics are retained as the internal cause, not copied to public issues.
+    expect(JSON.stringify(result.error.issues)).not.toContain("missing.proto");
+  },
+);
+
+it.each([
+  ["descriptor", protobufCaptureDescriptor()],
+  ["empty descriptor", Buffer.alloc(0)],
+] as const)(
+  "preserves the caller's cancellation reason during schema admission: %s",
+  async (_label, bytes) => {
+    const abort = new AbortController();
+    const reason = new Error("cancel schema admission");
+    abort.abort(reason);
+    await expect(
+      ProtobufSchema.read(
+        bytes,
+        "capture.Message",
+        new ProtobufBudget(abort.signal),
+        same,
+      ),
+    ).rejects.toBe(reason);
+  },
+);

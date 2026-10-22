@@ -157,6 +157,15 @@ An invalid nested interpretation records `schema_status: "invalid-message"`
 and `schema_error` locally; later outer fields remain available. Valid string
 contents, including a leading U+FEFF, are preserved.
 
+Schema admission failures identify the argument to correct in `details.issues`:
+an undefined selected message type uses `protobuf.schema.message_type` with
+`invalid_value`; malformed descriptor bytes or invalid/unresolved descriptor
+definitions use `protobuf.schema.descriptor_set_path` with `invalid_format`.
+Wire preflight failures preserve their byte offset and reason. SDK exception
+text is not copied into these public correction messages. Shared byte-budget
+and cancellation failures keep their own outcomes, and sanitized partial capture
+Evidence remains available when the independent source pass has completed.
+
 ```bash
 # Compile your own schema with your existing protoc, including local imports:
 protoc --include_imports --descriptor_set_out=/evidence/api.pb api.proto

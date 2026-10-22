@@ -438,25 +438,14 @@ export const decodeCaptureProtobuf = async (
       );
     });
     const { ProtobufSchema } = await import("./ProtobufSchema.js");
-    try {
-      schema = await ProtobufSchema.read(
-        snapshot.bytes,
-        options.schema.message_type,
-        budget,
-        redact,
-      );
-    } catch (cause) {
-      if (signal?.aborted === true && cause === signal.reason) throw cause;
-      if (cause instanceof CaptureFormatError) throw cause;
-      throw new AnalysisInputError("inspect_web_network_capture", undefined, [
-        {
-          path: ["protobuf", "schema"],
-          reason: "invalid_format",
-          message:
-            "The selected local FileDescriptorSet or message type is invalid or exceeds decoding budgets",
-        },
-      ]);
-    }
+    const admitted = await ProtobufSchema.read(
+      snapshot.bytes,
+      options.schema.message_type,
+      budget,
+      redact,
+    );
+    if (!admitted.ok) throw admitted.error;
+    schema = admitted.value;
     schemaSource = {
       decoder: "protobuf-es-2.16.0",
       descriptor_set_path: redact(path),

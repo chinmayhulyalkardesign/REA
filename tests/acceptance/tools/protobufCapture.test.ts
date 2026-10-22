@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { createHash } from "node:crypto";
 import { readFile, unlink, writeFile, mkdir, truncate } from "node:fs/promises";
 import { join } from "node:path";
 import { expect } from "vitest";
@@ -70,6 +71,112 @@ async function prepareMcpCapture(
     },
   };
   return { call, args, root, capture, descriptor };
+}
+
+for (const [label, messageType, malformed, issue] of [
+  ["valid", "capture.Message", false, null],
+  [
+    "missing-type",
+    "capture.Missing",
+    false,
+    {
+      path: ["protobuf", "schema", "message_type"],
+      reason: "invalid_value",
+    },
+  ],
+  [
+    "malformed-descriptor",
+    "capture.Message",
+    true,
+    {
+      path: ["protobuf", "schema", "descriptor_set_path"],
+      reason: "invalid_format",
+    },
+  ],
+] as const) {
+  captureTest(
+    `distinguishes Protobuf schema admission through CLI and MCP: ${label}`,
+    async ({ cli, mcp }) => {
+      const { call, args, root, capture, descriptor } = await prepareMcpCapture(
+        mcp.call,
+      );
+      const selectedDescriptor = malformed
+        ? join(root, "malformed.pb")
+        : descriptor;
+      if (malformed)
+        await writeFile(selectedDescriptor, Buffer.from([0x0a, 0xff]));
+      const sourceSha = createHash("sha256")
+        .update(await readFile(capture))
+        .digest("hex");
+      const cliResult = await cli.run({
+        arguments: [
+          "inspect-web-network-capture",
+          capture,
+          "har",
+          "--record",
+          "0",
+          "--protobuf-schema",
+          selectedDescriptor,
+          "--protobuf-message",
+          messageType,
+          "--json",
+        ],
+      });
+      const response = await call("inspect_web_network_capture", {
+        ...args,
+        protobuf: {
+          schema: {
+            descriptor_set_path: selectedDescriptor,
+            message_type: messageType,
+          },
+        },
+      });
+      if (issue === null) {
+        expect(cliResult.exitCode).toBe(0);
+        expect(response.isError).not.toBe(true);
+        expect(parseEvidence(cliResult.json).evidence_id).toBe(
+          parseEvidence(response.structuredContent).evidence_id,
+        );
+        return;
+      }
+      expect(cliResult.exitCode).toBe(1);
+      expect(cliResult.json).toMatchObject({
+        code: "invalid_request",
+        category: "invalid_input",
+        details: { issues: [issue], partial_observation: expect.any(Object) },
+      });
+      const cliPartial = z
+        .object({
+          details: z.object({
+            partial_observation: z.record(z.string(), z.unknown()),
+          }),
+        })
+        .parse(cliResult.json).details.partial_observation;
+      expect(JSON.stringify(cliPartial)).toContain(sourceSha);
+      const failure = parseMcpToolError(response).error;
+      expect(failure).toMatchObject({
+        code: "invalid_request",
+        category: "invalid_input",
+        retryable: false,
+        details: { issues: [issue] },
+      });
+      const source = retainedCaptureDetailsSchema.parse(
+        failure.details,
+      ).partial_observation;
+      const retained = await call("inspect_analysis_view", {
+        source,
+        view: { kind: "capture", detail: "complete", limit: 1 },
+      });
+      expect(retained.isError).not.toBe(true);
+      expect(
+        parseEvidence(retained.structuredContent).normalized_result,
+      ).toMatchObject({
+        parent_evidence_id: source.evidence_id,
+        artifact: { sha256: sourceSha },
+        items: [{ ordinal: 0 }],
+      });
+    },
+  );
 }
 
 captureTest(

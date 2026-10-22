@@ -143,3 +143,53 @@ it("joins the final human progress write before reporting success", async () => 
   await nextTurn();
   expect(destination.listenerCount("error")).toBe(0);
 });
+
+it("drains a real child after a progress writer closes before acknowledging its write", async () => {
+  let acknowledge!: (cause?: Error | null) => void;
+  let enter!: () => void;
+  const writing = new Promise<void>((resolve) => {
+    enter = resolve;
+  });
+  const destination = new Writable({
+    highWaterMark: 1024,
+    write(_chunk, _encoding, callback) {
+      acknowledge = callback;
+      enter();
+    },
+  });
+  vi.spyOn(process, "stderr", "get").mockReturnValue(
+    destination as typeof process.stderr,
+  );
+  let settled = false;
+  const pending = runUpdateCommand(
+    command(
+      "process.stdout.write('x'.repeat(1024*1024));process.stderr.write('finished')",
+    ),
+    process.env,
+    "human",
+  ).then((result) => {
+    settled = true;
+    return result;
+  });
+  await writing;
+  const closed = new Promise<void>((resolve) =>
+    destination.once("close", resolve),
+  );
+  destination.destroy();
+  await closed;
+  try {
+    await expect.poll(() => settled, { timeout: 1000 }).toBe(true);
+    expect(await pending).toMatchObject({
+      ok: false,
+      error: expect.stringContaining("progress destination closed"),
+    });
+    expect(child?.exitCode).toBe(0);
+    expect(destination.listenerCount("error")).toBe(1);
+  } finally {
+    acknowledge();
+    await pending;
+    await nextTurn();
+    expect(destination.listenerCount("error")).toBe(0);
+    expect(destination.listenerCount("close")).toBe(0);
+  }
+});

@@ -25,7 +25,7 @@ import {
   evidenceAuthoritySupportsProof,
   evidenceSupportsOriginalAuthority,
   proofAuthoritySatisfies,
-} from "./ReconstructionObligationAuthority.js";
+} from "../domain/reconstructionObligationAuthority.js";
 import {
   addObligationDiagnostic as addDiagnostic,
   contradictionDiagnostics,
@@ -38,6 +38,7 @@ import {
   originalCasesFor,
 } from "./ReconstructionObligationOriginalCases.js";
 import { obligationLedgerEvidenceLinks } from "./ReconstructionObligationLedgerProjection.js";
+import { reconstructionObligationVerifierDiagnostics } from "../domain/reconstructionObligationVerifier.js";
 import { compareUnicodeCodePoints } from "../domain/unicodeCodePointOrder.js";
 
 type Diagnostic = ReconstructionObligation["diagnostics"][number];
@@ -302,60 +303,13 @@ const evaluateBinding = (
         `${caseKind} fixture lacks ${candidate.required_fixture_authority} authority or authenticated Evidence.`,
       );
   }
-  evaluateVerifier(candidate, binding, context, diagnostics);
-};
-
-const evaluateVerifier = (
-  candidate: ReconstructionObligationCandidate,
-  binding: Binding,
-  context: EvaluationContext,
-  diagnostics: Diagnostic[],
-): void => {
-  const verifier = binding.verifier;
-  if (verifier === null) {
-    addDiagnostic(
-      diagnostics,
-      "missing-verifier",
-      "No verifier claim is bound to this obligation.",
-    );
-    return;
-  }
-  if (!verifier.enumerated_obligation_ids.includes(candidate.obligation_id))
-    addDiagnostic(
-      diagnostics,
-      "verifier-does-not-enumerate",
-      "The verifier claim does not enumerate this obligation ID.",
-    );
-  const resultEvidence = context.evidence.get(verifier.result_evidence_id);
-  if (resultEvidence === undefined)
-    addDiagnostic(
-      diagnostics,
-      "missing-verifier-result",
-      "The latest verifier result Evidence is absent from the bundle.",
-    );
-  if (
-    !proofAuthoritySatisfies(
-      verifier.authority,
-      candidate.required_verifier_authority,
-    ) ||
-    (resultEvidence !== undefined &&
-      !evidenceAuthoritySupportsProof(resultEvidence, verifier.authority, {
-        obligationId: candidate.obligation_id,
-        verifierId: verifier.verifier_id,
-        claimId: verifier.claim_id,
-      }))
-  )
-    addDiagnostic(
-      diagnostics,
-      "weak-verifier-authority",
-      `Verifier authority does not satisfy ${candidate.required_verifier_authority}.`,
-    );
-  if (verifier.status !== "pass")
-    addDiagnostic(
-      diagnostics,
-      "verifier-failed",
-      `Latest verifier status is ${verifier.status}.`,
-    );
+  diagnostics.push(
+    ...reconstructionObligationVerifierDiagnostics(
+      candidate,
+      binding,
+      context.evidence,
+    ),
+  );
 };
 
 const evaluateAuthority = (

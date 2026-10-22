@@ -149,6 +149,16 @@ const nondeterminismSchema = z.strictObject({
   specification: textSchema,
 });
 
+const verifierNegativeControlSchema = z.strictObject({
+  candidate: z.discriminatedUnion("kind", [
+    z.strictObject({ kind: z.literal("fixture"), fixture_id: stableIdSchema }),
+    z.strictObject({ kind: z.literal("artifact"), sha256: digestSchema }),
+  ]),
+  defect: textSchema,
+  status: z.enum(["pass", "fail", "unknown", "unsupported", "skipped"]),
+  result_evidence_id: evidenceIdSchema,
+});
+
 const verifierBindingSchema = z.strictObject({
   verifier_id: stableIdSchema,
   claim_id: stableIdSchema,
@@ -158,6 +168,8 @@ const verifierBindingSchema = z.strictObject({
   result_evidence_id: evidenceIdSchema,
   enumerated_obligation_ids: z.array(stableIdSchema).min(1),
   nondeterminism: nondeterminismSchema,
+  implementation_sha256: digestSchema.optional(),
+  negative_controls: z.array(verifierNegativeControlSchema).optional(),
 });
 
 export const reconstructionObligationManifestBindingSchema = z.strictObject({
@@ -215,6 +227,11 @@ const diagnosticSchema = z.strictObject({
     "missing-verifier-result",
     "weak-verifier-authority",
     "verifier-failed",
+    "unchallenged-verifier",
+    "vacuous-verifier",
+    "missing-control-result",
+    "weak-control-evidence",
+    "invalid-control-candidate",
     "static-only",
     "contradiction",
     "contradiction-evidence-missing",

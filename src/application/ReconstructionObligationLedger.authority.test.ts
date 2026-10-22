@@ -139,9 +139,9 @@ describe("reconstruction obligation ledger", () => {
         diagnostics.map(({ code }) => code),
       ),
     ).toEqual([
-      ["dependency-open"],
-      ["dependency-open"],
-      ["dependency-missing"],
+      ["dependency-open", "unchallenged-verifier"],
+      ["dependency-open", "unchallenged-verifier"],
+      ["dependency-missing", "unchallenged-verifier"],
     ]);
   });
 });

@@ -6,6 +6,7 @@ import type {
   ReadinessFinding,
   ReconstructionReadinessInput,
 } from "./reconstructionReadinessSchemas.js";
+import { reconstructionObligationVerifierDiagnostics } from "./reconstructionObligationVerifier.js";
 
 export const readinessIntegrityFindings = (
   input: ReconstructionReadinessInput,
@@ -165,6 +166,37 @@ const closureFindings = (
         input.obligation_ledger.evidence_links,
       ),
     );
+  const evidence = new Map(
+    input.evidence_bundle.records.map((record) => [record.evidence_id, record]),
+  );
+  for (const obligation of input.obligation_ledger.obligations) {
+    if (!obligation.required || obligation.status !== "verified") continue;
+    const verifier = obligation.binding?.verifier;
+    const diagnostics = reconstructionObligationVerifierDiagnostics(
+      obligation,
+      obligation.binding,
+      evidence,
+    );
+    for (const diagnostic of diagnostics)
+      findings.push(
+        finding(
+          diagnostic.code === "unchallenged-verifier"
+            ? "reconstruction-verifier-unchallenged"
+            : `reconstruction-${diagnostic.code}`,
+          "verify-reconstruction-closure",
+          diagnostic.code === "vacuous-verifier" ? "fail" : "unknown",
+          `${obligation.obligation_id}: ${diagnostic.detail}`,
+          obligation.binding === null
+            ? []
+            : [
+                ...(verifier == null ? [] : [verifier.result_evidence_id]),
+                ...(verifier?.negative_controls ?? []).map(
+                  ({ result_evidence_id: id }) => id,
+                ),
+              ],
+        ),
+      );
+  }
   addMissingEvidenceFindings(
     findings,
     "verify-reconstruction-closure",

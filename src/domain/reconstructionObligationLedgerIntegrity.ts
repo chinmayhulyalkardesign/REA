@@ -152,7 +152,12 @@ export const reconstructionObligationEvidenceIds = (
               ),
               ...(obligation.binding.verifier === null
                 ? []
-                : [obligation.binding.verifier.result_evidence_id]),
+                : [
+                    obligation.binding.verifier.result_evidence_id,
+                    ...(
+                      obligation.binding.verifier.negative_controls ?? []
+                    ).map(({ result_evidence_id: id }) => id),
+                  ]),
             ]),
       ]),
     ),

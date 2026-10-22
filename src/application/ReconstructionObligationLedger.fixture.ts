@@ -62,6 +62,15 @@ export const boundProofEvidence = (
     readonly claim_ids: readonly string[];
   },
   authority: "shipped-artifact" | "controlled-replay" = "controlled-replay",
+  options: {
+    readonly passed?: boolean;
+    readonly control?: {
+      readonly defect?: string;
+      readonly verifier_sha256: string;
+      readonly candidate_sha256?: string;
+      readonly failure_kind?: string;
+    };
+  } = {},
 ) =>
   createEvidence(
     undefined,
@@ -71,12 +80,13 @@ export const boundProofEvidence = (
       operation: "verify_reconstruction_obligations",
       parameters: {},
       result: {
-        passed: true,
+        passed: options.passed ?? true,
         obligation_ids: [...result.obligation_ids],
         fixture_ids: [...result.fixture_ids],
         case_kinds: [...result.case_kinds],
         verifier_ids: [...result.verifier_ids],
         claim_ids: [...result.claim_ids],
+        ...options.control,
       },
       confidence: "observed",
       authority,
@@ -121,61 +131,105 @@ export const originalCases = (
   }));
 
 /** Build a request whose packaged-process obligation closes as ready. */
-export const readyProcessLedgerRequest =
-  (): ReconstructionObligationLedgerInput => {
-    const capture = processEvidence();
-    const initial = build(request([capture]));
-    const obligation = initial.obligations[0];
-    if (obligation === undefined)
-      throw new Error("Expected process obligation");
-    const fixtureIds = obligation.required_case_kinds.map(
-      (caseKind) => `packaged.${caseKind}`,
-    );
-    const proof = boundProofEvidence("packaged", {
+export const readyProcessLedgerRequest = (
+  positiveCandidateSha256: string | null = "6".repeat(64),
+): ReconstructionObligationLedgerInput => {
+  const capture = processEvidence();
+  const initial = build(request([capture]));
+  const obligation = initial.obligations[0];
+  if (obligation === undefined) throw new Error("Expected process obligation");
+  const fixtureIds = obligation.required_case_kinds.map(
+    (caseKind) => `packaged.${caseKind}`,
+  );
+  const verifierSha256 = "3".repeat(64);
+  const proof = boundProofEvidence(
+    "packaged",
+    {
       obligation_ids: [obligation.obligation_id],
       fixture_ids: fixtureIds,
       case_kinds: obligation.required_case_kinds,
       verifier_ids: ["verifier.packaged"],
       claim_ids: ["claim.process"],
-    });
-    return request([capture, proof], {
-      manifest: {
-        bindings: [
-          {
-            obligation_id: obligation.obligation_id,
-            owner: {
-              module_path: "src/processOwner.ts",
-              symbol: "runProcess",
-              owner_sha256: "2".repeat(64),
-            },
-            parser_type: null,
-            original_cases: originalCases(obligation, capture.evidence_id),
-            fixtures: obligation.required_case_kinds.map((caseKind) => ({
-              fixture_id: `packaged.${caseKind}`,
-              case_kind: caseKind,
-              authority: "packaged-process",
-              evidence_ids: [proof.evidence_id],
-            })),
-            verifier: {
-              verifier_id: "verifier.packaged",
-              claim_id: "claim.process",
-              command: "npm run verify:package -- process",
-              authority: "packaged-process",
-              status: "pass",
-              result_evidence_id: proof.evidence_id,
-              enumerated_obligation_ids: [obligation.obligation_id],
-              nondeterminism: {
-                mode: "partial-order",
-                specification:
-                  "Startup precedes teardown; worker completion is unordered.",
-              },
-            },
-          },
-        ],
-        contradictions: [],
+    },
+    "controlled-replay",
+    {
+      control: {
+        verifier_sha256: verifierSha256,
+        ...(positiveCandidateSha256 === null
+          ? {}
+          : { candidate_sha256: positiveCandidateSha256 }),
       },
-    });
-  };
+    },
+  );
+  const control = boundProofEvidence(
+    "packaged-negative-control",
+    {
+      obligation_ids: [obligation.obligation_id],
+      fixture_ids: ["packaged.deliberate-defect"],
+      case_kinds: [],
+      verifier_ids: ["verifier.packaged"],
+      claim_ids: ["claim.process"],
+    },
+    "controlled-replay",
+    {
+      passed: false,
+      control: {
+        verifier_sha256: verifierSha256,
+        defect: "The candidate omits the shutdown result.",
+        failure_kind: "behavior-mismatch",
+      },
+    },
+  );
+  return request([capture, proof, control], {
+    manifest: {
+      bindings: [
+        {
+          obligation_id: obligation.obligation_id,
+          owner: {
+            module_path: "src/processOwner.ts",
+            symbol: "runProcess",
+            owner_sha256: "2".repeat(64),
+          },
+          parser_type: null,
+          original_cases: originalCases(obligation, capture.evidence_id),
+          fixtures: obligation.required_case_kinds.map((caseKind) => ({
+            fixture_id: `packaged.${caseKind}`,
+            case_kind: caseKind,
+            authority: "packaged-process",
+            evidence_ids: [proof.evidence_id],
+          })),
+          verifier: {
+            verifier_id: "verifier.packaged",
+            claim_id: "claim.process",
+            command: "npm run verify:package -- process",
+            authority: "packaged-process",
+            status: "pass",
+            result_evidence_id: proof.evidence_id,
+            enumerated_obligation_ids: [obligation.obligation_id],
+            nondeterminism: {
+              mode: "partial-order",
+              specification:
+                "Startup precedes teardown; worker completion is unordered.",
+            },
+            implementation_sha256: verifierSha256,
+            negative_controls: [
+              {
+                candidate: {
+                  kind: "fixture",
+                  fixture_id: "packaged.deliberate-defect",
+                },
+                defect: "The candidate omits the shutdown result.",
+                status: "fail",
+                result_evidence_id: control.evidence_id,
+              },
+            ],
+          },
+        },
+      ],
+      contradictions: [],
+    },
+  });
+};
 
 /** Create a minimal reviewed obligation for ledger closure scenarios. */
 export const reviewedObligation = (

@@ -1,6 +1,6 @@
 import type { Evidence } from "../domain/evidence.js";
 import type { ReconstructionObligation } from "../domain/reconstructionObligationLedgerSchemas.js";
-import { evidenceSupportsOriginalAuthority } from "./ReconstructionObligationAuthority.js";
+import { evidenceSupportsOriginalAuthority } from "../domain/reconstructionObligationAuthority.js";
 import type { ReconstructionObligationCandidate } from "./ReconstructionObligationCandidates.js";
 import { compareUnicodeCodePoints } from "../domain/unicodeCodePointOrder.js";
 

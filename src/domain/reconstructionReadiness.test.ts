@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import { RECONSTRUCTION_READINESS_EXAMPLE } from "../contracts/reconstructionReadinessExample.js";
+import { createEvidence } from "./evidence.js";
+import { createEvidenceBundle } from "./evidenceBundle.js";
 import { createReconstructionReadinessReport } from "./reconstructionReadiness.js";
 import {
   reconstructionObligationLedgerClosureDigest,
@@ -20,6 +22,80 @@ const input = (
   ...structuredClone(RECONSTRUCTION_READINESS_EXAMPLE),
   ...overrides,
 });
+
+const committedReadyLedger = (value: ReconstructionReadinessInput): void => {
+  value.obligation_ledger.closure_digest =
+    reconstructionObligationLedgerClosureDigest(value.obligation_ledger);
+  const latest = value.closure_history.at(-1);
+  if (latest === undefined) throw new TypeError("Missing closure history");
+  value.closure_history[value.closure_history.length - 1] = {
+    ...latest,
+    ledger_digest: value.obligation_ledger.closure_digest,
+  };
+  expect(
+    reconstructionObligationLedgerSchema.parse(value.obligation_ledger),
+  ).toEqual(value.obligation_ledger);
+};
+
+const replaceNegativeControlEvidence = (
+  value: ReconstructionReadinessInput,
+  changes: {
+    readonly passed?: boolean;
+    readonly verifier_sha256?: string;
+    readonly claim_ids?: readonly string[];
+    readonly obligation_ids?: readonly string[];
+    readonly fixture_ids?: readonly string[];
+  },
+  authority: "controlled-replay" | "shipped-artifact" = "controlled-replay",
+): string => {
+  const verifier = value.obligation_ledger.obligations[0]?.binding?.verifier;
+  const control = verifier?.negative_controls?.[0];
+  const original = value.evidence_bundle.records.find(
+    ({ evidence_id: id }) => id === control?.result_evidence_id,
+  );
+  if (verifier == null || control === undefined || original === undefined)
+    throw new TypeError("Missing control Evidence");
+  const result = original.normalized_result;
+  if (typeof result !== "object" || result === null || Array.isArray(result))
+    throw new TypeError("Invalid control result");
+  const replacement = createEvidence(undefined, original.provider, {
+    predicateType: original.predicate_type,
+    operation: original.operation,
+    parameters: original.parameters,
+    result: {
+      ...result,
+      ...(changes.passed === undefined ? {} : { passed: changes.passed }),
+      ...(changes.verifier_sha256 === undefined
+        ? {}
+        : { verifier_sha256: changes.verifier_sha256 }),
+      ...(changes.claim_ids === undefined
+        ? {}
+        : { claim_ids: [...changes.claim_ids] }),
+      ...(changes.obligation_ids === undefined
+        ? {}
+        : { obligation_ids: [...changes.obligation_ids] }),
+      ...(changes.fixture_ids === undefined
+        ? {}
+        : { fixture_ids: [...changes.fixture_ids] }),
+    },
+    confidence: original.confidence,
+    authority,
+  });
+  value.evidence_bundle = createEvidenceBundle([
+    ...value.evidence_bundle.records,
+    replacement,
+  ]);
+  value.obligation_ledger.evidence_links = [
+    ...new Set([
+      ...value.obligation_ledger.evidence_links,
+      replacement.evidence_id,
+    ]),
+  ].sort();
+  verifier.negative_controls = [
+    { ...control, result_evidence_id: replacement.evidence_id },
+  ];
+  return replacement.evidence_id;
+};
 
 describe("readiness bundle authentication", () => {
   it("authenticates each Evidence record after parsing the readiness contract", () => {
@@ -95,7 +171,177 @@ describe("reconstruction readiness report", () => {
   });
 });
 
+describe("readiness verifier control Evidence", () => {
+  it("does not trust a committed failing control that links a passing proof", () => {
+    const value = input();
+    const verifier = value.obligation_ledger.obligations[0]?.binding?.verifier;
+    const control = verifier?.negative_controls?.[0];
+    if (verifier == null || control === undefined)
+      throw new TypeError("Missing verifier control");
+    verifier.negative_controls = [
+      { ...control, result_evidence_id: verifier.result_evidence_id },
+    ];
+    committedReadyLedger(value);
+    const digest = value.obligation_ledger.closure_digest;
+
+    expect(createReconstructionReadinessReport(value).status).not.toBe("pass");
+    expect(value.obligation_ledger.status).toBe("ready");
+    expect(value.obligation_ledger.closure_digest).toBe(digest);
+  });
+
+  it("does not use a fixture as both the passing candidate and negative control", () => {
+    const value = input();
+    const verifier = value.obligation_ledger.obligations[0]?.binding?.verifier;
+    const control = verifier?.negative_controls?.[0];
+    if (verifier == null || control?.candidate.kind !== "fixture")
+      throw new TypeError("Missing fixture control");
+    const positive = value.evidence_bundle.records.find(
+      ({ evidence_id: id }) => id === verifier.result_evidence_id,
+    );
+    if (positive === undefined) throw new TypeError("Missing positive proof");
+    const result = positive.normalized_result;
+    if (typeof result !== "object" || result === null || Array.isArray(result))
+      throw new TypeError("Invalid positive proof");
+    const replacement = createEvidence(undefined, positive.provider, {
+      predicateType: positive.predicate_type,
+      operation: positive.operation,
+      parameters: positive.parameters,
+      result: {
+        ...result,
+        fixture_ids: [control.candidate.fixture_id],
+      },
+      confidence: positive.confidence,
+      authority: positive.authority,
+    });
+    value.evidence_bundle = createEvidenceBundle([
+      ...value.evidence_bundle.records,
+      replacement,
+    ]);
+    value.obligation_ledger.evidence_links = [
+      ...new Set([
+        ...value.obligation_ledger.evidence_links,
+        replacement.evidence_id,
+      ]),
+    ].sort();
+    verifier.result_evidence_id = replacement.evidence_id;
+    committedReadyLedger(value);
+    const digest = value.obligation_ledger.closure_digest;
+
+    expect(createReconstructionReadinessReport(value).status).not.toBe("pass");
+    expect(value.obligation_ledger.closure_digest).toBe(digest);
+  });
+
+  it.each([
+    [
+      "verifier digest",
+      { verifier_sha256: "c".repeat(64) },
+      "controlled-replay",
+    ],
+    ["claim", { claim_ids: ["claim.other"] }, "controlled-replay"],
+    ["obligation", { obligation_ids: ["obl.other"] }, "controlled-replay"],
+    ["candidate", { fixture_ids: ["fixture.other"] }, "controlled-replay"],
+    ["authority", {}, "shipped-artifact"],
+  ] as const)(
+    "does not trust a committed failing control with mismatched %s",
+    (_label, changes, authority) => {
+      const value = input();
+      replaceNegativeControlEvidence(value, changes, authority);
+      committedReadyLedger(value);
+      const digest = value.obligation_ledger.closure_digest;
+
+      expect(createReconstructionReadinessReport(value).status).not.toBe(
+        "pass",
+      );
+      expect(value.obligation_ledger.status).toBe("ready");
+      expect(value.obligation_ledger.closure_digest).toBe(digest);
+    },
+  );
+
+  it.each(["pass", "unknown", "unsupported", "skipped"] as const)(
+    "does not pass a committed ledger with a %s sibling control",
+    (status) => {
+      const value = input();
+      const verifier =
+        value.obligation_ledger.obligations[0]?.binding?.verifier;
+      const original = verifier?.negative_controls?.[0];
+      if (verifier == null || original === undefined)
+        throw new TypeError("Missing verifier control");
+      const evidenceId =
+        status === "pass"
+          ? replaceNegativeControlEvidence(value, { passed: true })
+          : original.result_evidence_id;
+      verifier.negative_controls = [
+        original,
+        { ...original, status, result_evidence_id: evidenceId },
+      ];
+      committedReadyLedger(value);
+      const digest = value.obligation_ledger.closure_digest;
+
+      expect(createReconstructionReadinessReport(value).status).not.toBe(
+        "pass",
+      );
+      expect(value.obligation_ledger.status).toBe("ready");
+      expect(value.obligation_ledger.closure_digest).toBe(digest);
+    },
+  );
+});
+
 describe("readiness obligation ledger integrity", () => {
+  it("keeps a historical ready ledger intact but marks its verifier unchallenged", () => {
+    const value = input();
+    const obligation = value.obligation_ledger.obligations[0];
+    const verifier = obligation?.binding?.verifier;
+    if (
+      obligation === undefined ||
+      obligation.binding === null ||
+      verifier == null
+    )
+      throw new TypeError("Missing verified obligation");
+    const {
+      implementation_sha256: _digest,
+      negative_controls: _controls,
+      ...legacyVerifier
+    } = verifier;
+    const legacyLedger = {
+      ...value.obligation_ledger,
+      obligations: [
+        {
+          ...obligation,
+          binding: { ...obligation.binding, verifier: legacyVerifier },
+        },
+      ],
+    };
+    value.obligation_ledger = {
+      ...legacyLedger,
+      closure_digest: reconstructionObligationLedgerClosureDigest(legacyLedger),
+    };
+    const latest = value.closure_history.at(-1);
+    if (latest === undefined) throw new TypeError("Missing closure history");
+    value.closure_history[value.closure_history.length - 1] = {
+      ...latest,
+      ledger_digest: value.obligation_ledger.closure_digest,
+    };
+
+    expect(
+      reconstructionObligationLedgerSchema.parse(value.obligation_ledger),
+    ).toEqual(value.obligation_ledger);
+    const report = createReconstructionReadinessReport(value);
+    expect(report.status).toBe("unknown");
+    expect(report.findings).toContainEqual(
+      expect.objectContaining({
+        code: "reconstruction-verifier-unchallenged",
+        stage_id: "verify-reconstruction-closure",
+      }),
+    );
+    expect(report.findings.map(({ code }) => code)).not.toContain(
+      "closure-history-identity-mismatch",
+    );
+    expect(value.obligation_ledger.status).toBe("ready");
+    expect(value.obligation_ledger.closure_digest).toBe(
+      reconstructionObligationLedgerClosureDigest(value.obligation_ledger),
+    );
+  });
+
   it("rejects a required obligation changed behind the old ledger commitment", () => {
     const value = input();
     expect(

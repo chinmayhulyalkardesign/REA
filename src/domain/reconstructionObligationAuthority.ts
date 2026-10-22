@@ -1,5 +1,5 @@
-import type { Evidence } from "../domain/evidence.js";
-import type { ReconstructionObligation } from "../domain/reconstructionObligationLedgerSchemas.js";
+import type { Evidence } from "./evidence.js";
+import type { ReconstructionObligation } from "./reconstructionObligationLedgerSchemas.js";
 
 type ProofAuthority = ReconstructionObligation["required_fixture_authority"];
 type OriginalAuthority =
@@ -10,6 +10,11 @@ interface ExpectedProof {
   readonly caseKind?: string;
   readonly verifierId?: string;
   readonly claimId?: string;
+  readonly passed?: boolean;
+  readonly candidateSha256?: string;
+  readonly verifierSha256?: string;
+  readonly defect?: string;
+  readonly failureKind?: string;
 }
 
 const proofEvidenceAuthorities: Readonly<
@@ -79,8 +84,17 @@ export const evidenceAuthoritySupportsProof = (
   const includes = (key: string, value: string | undefined): boolean =>
     value === undefined ||
     (Array.isArray(result[key]) && result[key].includes(value));
+  const scalarMatches = [
+    [expected.verifierSha256, result.verifier_sha256],
+    [expected.defect, result.defect],
+    [expected.failureKind, result.failure_kind],
+    [expected.candidateSha256, result.candidate_sha256],
+  ].every(([expectedValue, actualValue]) =>
+    expectedValue === undefined ? true : expectedValue === actualValue,
+  );
   return (
-    result.passed === true &&
+    result.passed === (expected.passed ?? true) &&
+    scalarMatches &&
     includes("obligation_ids", expected.obligationId) &&
     includes("fixture_ids", expected.fixtureId) &&
     includes("case_kinds", expected.caseKind) &&

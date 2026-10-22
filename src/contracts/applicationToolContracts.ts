@@ -197,7 +197,7 @@ export const APPLICATION_TOOL_CONTRACTS = [
     name: "build_reconstruction_obligation_ledger",
     ...toolContractMetadata("build_reconstruction_obligation_ledger"),
     description:
-      "Generate the complete deterministic ReconstructionObligationLedger from an authenticated Evidence bundle, reviewed obligations, and an explicit reconstruction manifest. Static candidates remain candidates; duplicate ownership, missing original or reconstruction cases, missing parser/type, weak verifier authority, unenumerated claims, contradictions, dependencies, and residual unknowns fail closed. The inline result carries the full-ledger closure digest and typed per-obligation diagnostics.",
+      "Generate the complete deterministic ReconstructionObligationLedger from an authenticated Evidence bundle, reviewed obligations, and an explicit reconstruction manifest. Static candidates remain candidates; duplicate ownership, missing original or reconstruction cases, missing parser/type, weak verifier authority, unchallenged or vacuous verifiers, unenumerated claims, contradictions, dependencies, and residual unknowns fail closed. The inline result carries the full-ledger closure digest and typed per-obligation diagnostics.",
     kind: "application",
     inputSchema: reconstructionObligationLedgerInputSchema,
     outputSchema: reconstructionObligationLedgerOutputSchema,

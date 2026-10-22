@@ -101,6 +101,47 @@ describe("selected skill admission", () => {
     },
   );
 
+  it("keeps a CLI-only skill choice offered under a client-specific ID", async () => {
+    const host = new FakeSetupHost();
+    host.hopper = "/Applications/Hopper";
+    host.clients = [{ name: "claude_code", configPath: "/claude.json" }];
+    const offered: string[] = [];
+    const result = await runSetup(
+      { ...options(false), structured: false },
+      host,
+      async (actions, context) => {
+        if (context?.stage === "select") {
+          const skill = actions.find(({ kind }) => kind === "install_skill");
+          offered.push(skill?.id ?? "");
+          return {
+            approved: false,
+            selectedActionIds: skill === undefined ? [] : [skill.id],
+          };
+        }
+        return true;
+      },
+    );
+    expect(offered).toEqual(["install_skill:claude_code"]);
+    expect(result.status).toBe("ready");
+    expect(
+      result.plannedActions.map(({ id, target }) => ({ id, target })),
+    ).toEqual([
+      {
+        id: "install_skill",
+        target: join(
+          "/fixture/home",
+          ".agents",
+          "skills",
+          "reverse-engineer-anything",
+        ),
+      },
+    ]);
+    expect(result.appliedActions).toEqual(["installed_skill"]);
+    expect(host.skillInstalls).toBe(1);
+    expect(host.configurations).toBe(0);
+    expect(host.skillDirectoryValidations).toEqual([[], []]);
+  });
+
   it("rechecks directory admission after approval before changing clients or Hopper", async () => {
     const host = new FakeSetupHost("linux");
     host.distribution = {

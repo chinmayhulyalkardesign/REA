@@ -66,7 +66,10 @@ export class WebNetworkApiSurfaceAccumulator extends WebNetworkProjectionAccumul
     return ok(undefined);
   }
 
-  add(record: WebNetworkCaptureRecord): Result<void, AnalysisError> {
+  add(
+    record: WebNetworkCaptureRecord,
+    format: "har" | "saz",
+  ): Result<void, AnalysisError> {
     const limitations = this.addLimitations(record.limitations);
     if (!limitations.ok) return limitations;
     try {
@@ -74,6 +77,7 @@ export class WebNetworkApiSurfaceAccumulator extends WebNetworkProjectionAccumul
         record.reported,
         this.includeQueryParameterNames,
         this.scratch,
+        format,
       );
       if (line === null) return this.overBudget();
       if (line.kind === "excluded")

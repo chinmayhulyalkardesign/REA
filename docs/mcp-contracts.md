@@ -315,7 +315,7 @@ For `inspect_artifact`, omission also keeps the original request parameters and
 complete output shape. Delivery selection never reaches the inventory engine;
 the complete inspection and its atomic inventory Evidence remain retained.
 
-`inspect_analysis_view` also accepts `api-surface` for retained HAR capture Evidence,
+`inspect_analysis_view` also accepts `api-surface` for retained HAR or SAZ capture Evidence,
 grouping request lines by method, origin and format-rule path template. Templated
 segments are inferences. Because paging follows the full grouping, every page is
 inferred Evidence whenever any group is templated, and derived Evidence only when

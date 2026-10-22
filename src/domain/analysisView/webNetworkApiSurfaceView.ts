@@ -8,7 +8,7 @@ import type {
   UnsignedAnalysisView,
 } from "./analysisView.js";
 import { WebNetworkApiSurfaceAccumulator } from "./WebNetworkApiSurfaceAccumulator.js";
-import { admitHarCaptureParent } from "./WebNetworkProjectionAccumulator.js";
+import { admitWebNetworkCaptureParent } from "./WebNetworkProjectionAccumulator.js";
 import { ROUTE_RULES } from "./webNetworkRouteTemplates.js";
 
 export const apiSurfaceViewSchema = z.strictObject({
@@ -76,7 +76,7 @@ export const apiSurfaceFields = {
     }),
   ),
 };
-/** Group retained HAR request lines; format matches do not establish handler identity. */
+/** Group retained HAR/SAZ request lines; format matches do not establish handler identity. */
 export const projectWebNetworkApiSurfaceView = (
   parent: AnalysisViewParent,
   view: AnalysisViewRequest,
@@ -93,7 +93,11 @@ export const projectWebNetworkApiSurfaceView = (
         `View ${view.kind} is unsupported for parent operation ${parent.operation}; api-surface requires inspect_web_network_capture.`,
       ),
     );
-  const admitted = admitHarCaptureParent(parent, "api-surface", accumulator);
+  const admitted = admitWebNetworkCaptureParent(
+    parent,
+    "api-surface",
+    accumulator,
+  );
   if (!admitted.ok) return admitted;
   const capture = admitted.value;
   const limitations = accumulator.addLimitations([
@@ -113,7 +117,7 @@ export const projectWebNetworkApiSurfaceView = (
   ]);
   if (!limitations.ok) return limitations;
   for (const record of capture.records) {
-    const added = accumulator.add(record);
+    const added = accumulator.add(record, capture.format);
     if (!added.ok) return added;
   }
   const page = accumulator.page(view.offset, view.limit);

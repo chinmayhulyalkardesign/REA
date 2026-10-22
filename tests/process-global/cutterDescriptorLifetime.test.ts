@@ -212,8 +212,12 @@ it("does not assign a peer's later cancellation to a descriptor that already fai
   fault.root = root;
   const controller = new AbortController();
   const reason = new Error("cancel after the first descriptor failure");
+  let firstEntered!: () => void;
   let entered!: () => void;
   let release!: () => void;
+  const firstClosing = new Promise<void>((resolve) => {
+    firstEntered = resolve;
+  });
   const waiting = new Promise<void>((resolve) => {
     entered = resolve;
   });
@@ -221,7 +225,10 @@ it("does not assign a peer's later cancellation to a descriptor that already fai
     release = resolve;
   });
   fault.onClose = async (handle) => {
-    if (handle === fault.handles[0]) return;
+    if (handle === fault.handles[0]) {
+      firstEntered();
+      return;
+    }
     entered();
     await gate;
   };
@@ -230,7 +237,9 @@ it("does not assign a peer's later cancellation to a descriptor that already fai
     .listSessions({ signal: controller.signal })
     .catch((cause: unknown) => cause);
   try {
-    await waiting;
+    // Concurrent reads can reach close in either order. Let the first handle's
+    // close failure settle while the peer remains held at its close boundary.
+    await Promise.all([firstClosing, waiting]);
     await new Promise((resolve) => setImmediate(resolve));
     controller.abort(reason);
     release();

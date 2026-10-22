@@ -48,10 +48,23 @@ export interface ReconstructionEvaluationContext extends ParsedReconstructionCov
   readonly evidenceIds: Set<string>;
 }
 
+const boundarySurfaceIds = (
+  context: ReconstructionEvaluationContext,
+): readonly string[] => {
+  const ids = new Set<string>(context.boundary.required_surface_ids);
+  for (const claimId of context.boundary.required_claim_ids) {
+    const claim = context.claims.get(claimId);
+    if (claim !== undefined) {
+      for (const surfaceId of claim.surface_ids) ids.add(surfaceId);
+    }
+  }
+  return [...ids];
+};
+
 export const evaluateReconstructionSurfaces = (
   context: ReconstructionEvaluationContext,
 ): void => {
-  for (const surfaceId of context.boundary.required_surface_ids) {
+  for (const surfaceId of boundarySurfaceIds(context)) {
     const surface = context.surfaces.get(surfaceId);
     if (surface === undefined) {
       addReason(
@@ -395,12 +408,11 @@ export const evaluateReconstructionCoverageRisks = (
         unknownId,
         "Active residual unknown is not permitted by the completion boundary.",
       );
+  const requiredSurfaceIds = new Set(boundarySurfaceIds(context));
   for (const contradiction of context.coverage.contradictions)
     if (
       contradiction.status === "active" &&
-      (contradiction.surface_ids.some((id) =>
-        context.boundary.required_surface_ids.includes(id),
-      ) ||
+      (contradiction.surface_ids.some((id) => requiredSurfaceIds.has(id)) ||
         contradiction.claim_ids.some((id) =>
           context.boundary.required_claim_ids.includes(id),
         ))
@@ -418,7 +430,7 @@ export const evaluateReconstructionCoverageRisks = (
 export const evaluateReconstructionPackageProofs = (
   context: ReconstructionEvaluationContext,
 ): void => {
-  const requiredArtifactDigests = context.boundary.required_surface_ids.flatMap(
+  const requiredArtifactDigests = boundarySurfaceIds(context).flatMap(
     (surfaceId) => {
       const surface = context.surfaces.get(surfaceId);
       const artifact =
@@ -438,24 +450,31 @@ export const evaluateReconstructionPackageProofs = (
       requiredArtifactDigests.every((digest) =>
         proof.artifact_sha256s.includes(digest),
       ) && packageProofHasComparableEvidence(proof, context.evidenceById);
-    const passing = proofs.find(
+    const passing = proofs.filter(
       (proof) => proof.status === "pass" && applicable(proof),
     );
-    if (passing !== undefined) {
-      addEvidence(context, passing.evidence_ids);
-      continue;
-    }
-    const failing = proofs.find(
+    const failing = proofs.filter(
       (proof) => proof.status === "fail" && applicable(proof),
     );
-    if (failing !== undefined) {
-      addEvidence(context, failing.evidence_ids);
+    if (failing.length > 0) {
+      addEvidence(
+        context,
+        [...passing, ...failing].flatMap(({ evidence_ids }) => evidence_ids),
+      );
       addReason(
         context,
         "package-proof-failed",
         kind,
         "Required package or integration proof failed.",
       );
+      continue;
+    }
+    if (passing.length > 0) {
+      addEvidence(
+        context,
+        passing.flatMap(({ evidence_ids }) => evidence_ids),
+      );
+      continue;
     } else if (proofs.length > 0) {
       addEvidence(
         context,

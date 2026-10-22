@@ -199,12 +199,18 @@ const ghidraNativeApiBoundary = nativeApiBoundarySchema.superRefine(
         message:
           "Ghidra native API observations require HighFunction provenance",
       });
-    const addresses = value.jump_tables.flatMap((table) => [
-      table.dispatch_address,
-      ...table.data_sources.map(({ address }) => address),
-      ...table.mappings.map(({ target_address }) => target_address),
-      ...table.default_targets.map(({ target_address }) => target_address),
-    ]);
+    const addresses = [
+      ...value.jump_tables.flatMap((table) => [
+        table.dispatch_address,
+        ...table.data_sources.map(({ address }) => address),
+        ...table.mappings.map(({ target_address }) => target_address),
+        ...table.default_targets.map(({ target_address }) => target_address),
+      ]),
+      ...(value.unresolved_indirect_branches ?? []).flatMap((branch) => [
+        branch.branch_address,
+        ...branch.listing_targets,
+      ]),
+    ];
     if (
       addresses.some(
         (address) => !ghidraCanonicalAddressSchema.safeParse(address).success,

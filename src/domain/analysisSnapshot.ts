@@ -62,6 +62,7 @@ const formatSchema = z.enum([
   "dos-com",
   "raw-binary",
   "zip",
+  "gzip",
   "ipa",
   "apk",
   "msix",
@@ -91,6 +92,15 @@ const subjectFormatSchema = z.enum([
   "javascript-bundle",
   "entitlements",
   "pyinstaller",
+  "7z",
+  "tar",
+  "bzip2",
+  "xz",
+  "wasm",
+  "sqlite",
+  "dex",
+  "jvm-class",
+  "python-bytecode",
 ]);
 // Snapshot entries retain the same raw-only architecture boundary as targets.
 const subjectSchema = z.discriminatedUnion("format", [

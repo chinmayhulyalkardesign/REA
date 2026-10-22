@@ -10,6 +10,7 @@ import { MachOSliceArtifactReader } from "../MachOSliceArtifactReader.js";
 import { NativeDmgArtifactReader } from "../NativeDmgArtifactReader.js";
 import { PyInstallerArtifactReader } from "../PyInstallerArtifactReader.js";
 import { ZipArtifactReader } from "../ZipArtifactReader.js";
+import { GzipArtifactReader } from "../GzipArtifactReader.js";
 import type {
   ArtifactInventoryCoverage,
   ArtifactOccurrence,
@@ -43,6 +44,8 @@ export const createReader = (
       return new PyInstallerArtifactReader(path, rootSource);
     case "godot-pck":
       return new GodotPckArtifactReader(path, rootSource);
+    case "gzip":
+      return new GzipArtifactReader(path, rootSource);
     case "mach-o-universal":
       return process.platform === "darwin"
         ? new MachOSliceArtifactReader(path, environment, undefined, rootSource)
@@ -98,7 +101,12 @@ export const inventoryCoverage = (
     isZipPackageFormat(format) ||
     format === "directory" ||
     format === "asar" ||
-    format === "godot-pck"
+    format === "godot-pck" ||
+    format === "gzip" ||
+    format === "7z" ||
+    format === "tar" ||
+    format === "bzip2" ||
+    format === "xz"
   )
     return {
       coverage: { scope: "container-entries", status: "unknown" },

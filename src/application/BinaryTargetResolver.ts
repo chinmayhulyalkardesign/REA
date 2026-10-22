@@ -385,6 +385,8 @@ const detectArtifactFormat = async (
   // Binary plists, including keyed archives, often use other extensions.
   if (hasBinaryPlistSignature(magic.subarray(0, observed.bytesRead)))
     return "plist";
+  if (observed.bytesRead >= 2 && magic[0] === 0x1f && magic[1] === 0x8b)
+    return "gzip";
   const named = namedArtifactFormat(lower);
   if (named !== undefined) return named;
   if (
@@ -462,7 +464,7 @@ const isArchiveFormat = (
   >,
 ): format is Extract<BinaryTarget, { kind: "archive" }>["format"] =>
   isZipPackageFormat(format) ||
-  ["asar", "godot-pck", "dmg", "pkg"].includes(format);
+  ["asar", "godot-pck", "dmg", "pkg", "gzip"].includes(format);
 
 /** Whether the leading bytes begin any executable header family, valid or not. */
 const claimsLeadingExecutableHeader = async (

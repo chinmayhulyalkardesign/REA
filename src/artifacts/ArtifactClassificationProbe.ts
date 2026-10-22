@@ -15,6 +15,10 @@ import {
   type MachoHeaderPrefixFacts,
   type FatSliceHeaderEvidence,
 } from "../domain/apple/machoContainer.js";
+import {
+  createJvmClassSignatureProbe,
+  MAX_JVM_CLASS_PROBE_BYTES,
+} from "../domain/apple/jvmClassFile.js";
 
 /** Initial bytes required by the other bounded format classifiers. */
 export const ARTIFACT_CLASSIFICATION_PREFIX_BYTES = 8_192;
@@ -111,6 +115,7 @@ export const createArtifactClassificationProbe = (
 ) => {
   const xml = createXmlPlistSignatureProbe();
   const asar = createAsarHeaderSignatureProbe(asarHeaderAdmission);
+  const jvm = createJvmClassSignatureProbe();
   const blocks: Buffer[] = [];
   let retainedBytes = 0;
   let observedBytes = 0;
@@ -159,11 +164,13 @@ export const createArtifactClassificationProbe = (
         ARTIFACT_CLASSIFICATION_PREFIX_BYTES,
         xml.state === "pending" ? MAX_XML_PLIST_PROBE_BYTES : 0,
         asar.observation.state === "pending" ? asar.limit : 0,
+        jvm.state === "pending" ? MAX_JVM_CLASS_PROBE_BYTES : 0,
       );
     },
     write(bytes: Uint8Array): void {
       const streamOffset = observedBytes;
       asar.write(bytes);
+      jvm.write(bytes);
       let offset = 0;
       while (offset < bytes.length) {
         const limit =
@@ -171,7 +178,9 @@ export const createArtifactClassificationProbe = (
             ? ARTIFACT_CLASSIFICATION_PREFIX_BYTES
             : xml.state === "pending"
               ? MAX_XML_PLIST_PROBE_BYTES
-              : retainedBytes;
+              : jvm.state === "pending"
+                ? MAX_JVM_CLASS_PROBE_BYTES
+                : retainedBytes;
         if (retainedBytes >= limit) break;
         const selected = bytes.subarray(
           offset,

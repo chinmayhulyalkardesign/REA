@@ -126,6 +126,7 @@ export const classifyAndHashRootForInventory = async (
       isZipPackageFormat(format) ||
       format === "mach-o-universal" ||
       format === "godot-pck" ||
+      format === "gzip" ||
       format === "pyinstaller";
     outcome = {
       kind: "completed",

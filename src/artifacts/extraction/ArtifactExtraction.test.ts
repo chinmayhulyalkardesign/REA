@@ -1,5 +1,6 @@
 import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { gzipSync } from "node:zlib";
 
 import { expect, it, vi } from "vitest";
 
@@ -49,6 +50,33 @@ it("keeps the detection error primary and reports a failed detection close", asy
     expect(attempts).toBe(2);
   } finally {
     close.mockRestore();
+    await resourceScope.close().catch(() => undefined);
+  }
+});
+
+it("extracts standalone gzip archives via extractArtifact", async () => {
+  const directory = await createTestTempDirectory("rea-extraction-gzip-");
+  const gzPath = join(directory, "challenge.bin.gz");
+  const payload = Buffer.from("STANDALONE_GZIP_EXTRACTED_CONTENT_12345");
+  await writeFile(gzPath, gzipSync(payload));
+
+  const resourceScope = new ArtifactResourceScope();
+  try {
+    const result = await extractArtifact({
+      inputPath: gzPath,
+      inputFormat: "gzip",
+      outputRoot: join(directory, "out"),
+      environment: process.env,
+      integrityPolicy: "fail",
+      resourceScope,
+    });
+
+    expect(result.artifacts.length).toBe(1);
+    expect(result.artifacts[0]?.relative_path).toBe("challenge.bin");
+    expect(result.artifacts[0]?.bytes_written).toBe(payload.length);
+    expect(result.manifest.root_format).toBe("gzip");
+    expect(result.containment_verified).toBe(true);
+  } finally {
     await resourceScope.close().catch(() => undefined);
   }
 });

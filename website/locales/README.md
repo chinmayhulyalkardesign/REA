@@ -130,6 +130,10 @@ website messages remain untranslated and use the labeled, nonindexable English
 fallback described above; the README translation does not establish website
 translation coverage.
 
+Bangla (`bn`) has a translated README and a pending website catalog. Like
+Malayalam, its website messages remain untranslated and use the labeled,
+nonindexable English fallback until the catalog is translated.
+
 The first catalogs started with machine-assisted drafts. They include editorial
 corrections to navigation, prompts and technical terminology. Traditional Chinese
 started from the Simplified Chinese draft and is maintained independently.

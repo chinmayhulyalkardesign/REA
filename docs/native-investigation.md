@@ -409,6 +409,31 @@ complete observation.
   its outcome. Paths outside the analyzed root, including shared-cache system
   libraries, stay undetermined. See
   [Apple application analysis](apple-application-analysis.md#dylib-load-resolution).
+
+The four app resource commands, `inspect_plist`, `inspect_asset_catalog`,
+`inspect_keyed_archive`, and `decode_interface_builder`, use a separate read-only
+resource session when the CLI input is a bundle directory. They do not require
+`CFBundleExecutable`,
+resolve a program by filename convention, or establish executable identity.
+For MCP, select the app with `open_bundle_resources` before querying its
+resources. `inspect_plist` defaults to the selected bundle's Info.plist and
+preserves an omitted executable declaration. A declared executable is not
+opened or validated by this resource route either.
+
+Resource-only Evidence has a null `subject`; results identify the selected
+root through `resource_root`, and executable target digests remain null. Use
+the reported per-resource provenance for the bytes actually read. A supported
+Info.plist layout identifies a resource root; it does not establish that the
+plist contents or every resource can be decoded. Parsing, resource selection,
+and filesystem failures remain explicit outcomes of their respective readers.
+
+Executable analysis still uses `open_binary` and the ordinary binary admission
+checks. Missing or invalid executable declarations, unsafe program names, and
+unresolved program paths remain typed failures on that route. Resource sessions
+do not support binary-only operations or binary analysis snapshots. See the
+[resource session contract](mcp-contracts.md#identity-and-discovery) for
+session status and provenance semantics.
+
 - `inspect_asset_catalog` / `rea inspect-asset-catalog <app>` reads compiled
   `Assets.car` metadata through macOS `assetutil --info`. Catalog digests, raw
   rendition fields, pagination and exact UI resource-name matches are returned.

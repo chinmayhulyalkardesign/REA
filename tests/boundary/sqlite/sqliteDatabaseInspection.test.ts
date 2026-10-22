@@ -602,6 +602,25 @@ it("samples above 1000 rows and safe integer limits within the byte budget", asy
   }
 });
 
+it("attributes result-column limits to column selection instead of reporting format failure", async () => {
+  const path = await createDatabase(`
+    CREATE TABLE records(id INTEGER, email TEXT);
+    INSERT INTO records VALUES (1, 'sample');
+  `);
+  expect(() =>
+    inspectSqliteDatabaseSnapshot(path, {
+      path,
+      table: "records",
+      columns: Array(2001).fill("email"),
+    }),
+  ).toThrow(
+    expect.objectContaining({
+      reason: "column-selection",
+      message: expect.stringContaining("too many columns in result set"),
+    }),
+  );
+});
+
 nativeTest.skipIf(SQLITE_NATIVE_LIMITS_AVAILABLE)(
   "rejects a runtime without native limits before querying the snapshot",
   async () => {

@@ -891,3 +891,63 @@ cliTest.runIf(SQLITE_NATIVE_LIMITS_AVAILABLE)(
     expect(await readFile(path)).toEqual(before);
   },
 );
+
+cliTest(
+  "attributes SQLite result-column limits to columns instead of database format through MCP",
+  async () => {
+    const root = await createTestTempDirectory("rea-sqlite-column-limit-");
+    const path = join(root, "selected.db");
+    const db = new DatabaseSync(path);
+    try {
+      db.exec(
+        "CREATE TABLE records(id INTEGER, email TEXT); INSERT INTO records VALUES (1, 'sample');",
+      );
+    } finally {
+      db.close();
+    }
+    const before = await readFile(path);
+    const { call } = await connectLocalToolsMcp();
+    const response = await call("inspect_sqlite_database", {
+      path,
+      table: "records",
+      columns: Array(2001).fill("email"),
+      row_limit: 1,
+    });
+    const mcpError = parseMcpToolError(response).error;
+    expect(mcpError).toMatchObject({
+      code: "invalid_request",
+      category: "invalid_input",
+      retryable: false,
+      details: {
+        issues: [
+          {
+            path: ["columns"],
+            reason: "invalid_format",
+            message: expect.stringContaining("too many columns in result set"),
+          },
+        ],
+      },
+    });
+
+    const malformedPath = join(root, "malformed.db");
+    await writeFile(malformedPath, "not a SQLite database".repeat(100));
+    const malformedResponse = await call("inspect_sqlite_database", {
+      path: malformedPath,
+    });
+    const malformedError = parseMcpToolError(malformedResponse).error;
+    expect(malformedError).toMatchObject({
+      code: "invalid_request",
+      details: {
+        issues: [
+          {
+            path: ["path"],
+            reason: "invalid_format",
+            message: expect.stringContaining("file is not a database"),
+          },
+        ],
+      },
+    });
+
+    expect(await readFile(path)).toEqual(before);
+  },
+);

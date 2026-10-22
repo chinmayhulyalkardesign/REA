@@ -604,6 +604,9 @@ const readRows = (
       rows.values.push(values);
     }
   } catch (cause: unknown) {
+    const message = cause instanceof Error ? cause.message : String(cause);
+    if (message.includes("too many columns in result set"))
+      throw new SqliteInspectionFailure("column-selection", message);
     throw columnEvaluationFailure(db, cause, {
       table,
       columns,

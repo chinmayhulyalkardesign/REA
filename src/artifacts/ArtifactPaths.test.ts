@@ -59,6 +59,57 @@ const annotate = (paths: readonly string[]) => {
   };
 };
 
+describe("normalizeArtifactPath", () => {
+  // A leading `[A-Za-z]:` is a Windows drive prefix; on every other host it is
+  // an ordinary (and legal) component. `linux` stands in for any non-win32 host.
+  const posix = "linux" as NodeJS.Platform;
+  const win32 = "win32" as NodeJS.Platform;
+
+  it("accepts a leading letter-colon on POSIX hosts (electron asar member, #3874)", () => {
+    expect(normalizeArtifactPath("a:b.txt", posix)).toBe("a:b.txt");
+    expect(normalizeArtifactPath("nested/a:b.txt", posix)).toBe(
+      "nested/a:b.txt",
+    );
+    // Two-letter start does not match the drive-prefix anchor; it was always
+    // accepted and must stay accepted.
+    expect(normalizeArtifactPath("ab:c.txt", posix)).toBe("ab:c.txt");
+  });
+
+  it("still rejects absolute paths and null bytes on POSIX hosts", () => {
+    expect(() => normalizeArtifactPath("/abs", posix)).toThrow(
+      "Artifact path is absolute or unsafe",
+    );
+    expect(() =>
+      normalizeArtifactPath(`a${String.fromCharCode(0)}b`, posix),
+    ).toThrow("Artifact path is absolute or unsafe");
+  });
+
+  it("rejects a Windows drive prefix on win32 hosts", () => {
+    expect(() => normalizeArtifactPath("C:foo", win32)).toThrow(
+      "Artifact path is absolute or unsafe",
+    );
+    expect(() => normalizeArtifactPath("c:foo/bar", win32)).toThrow(
+      "Artifact path is absolute or unsafe",
+    );
+  });
+
+  it("stays fail-closed for a literal a:b.txt on win32 hosts", () => {
+    expect(() => normalizeArtifactPath("a:b.txt", win32)).toThrow(
+      "Artifact path is absolute or unsafe",
+    );
+  });
+
+  it("accepts ordinary relative paths on win32 hosts", () => {
+    expect(normalizeArtifactPath("nested/file.txt", win32)).toBe(
+      "nested/file.txt",
+    );
+  });
+
+  it("uses the host platform when none is supplied", () => {
+    expect(normalizeArtifactPath("nested/file.txt")).toBe("nested/file.txt");
+  });
+});
+
 describe("English Unicode case collisions", () => {
   it("retains repeated same-kind entries while rejecting file-directory aliasing", () => {
     const registry = new ArtifactPathRegistry();

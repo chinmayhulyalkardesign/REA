@@ -47,9 +47,26 @@ export class DestinationCaseCollisionFailure extends ArtifactReaderFailure {
   }
 }
 
-/** Normalize slash-separated logical names; backslashes are literal components. */
-export const normalizeArtifactPath = (input: string): string => {
-  if (input.includes("\0") || input.startsWith("/") || DRIVE_PREFIX.test(input))
+/**
+ * Normalize slash-separated logical names; backslashes are literal components.
+ *
+ * The Windows drive-letter prefix (`C:`) is only meaningful on Windows hosts.
+ * Other platforms treat a leading `[A-Za-z]:` as an ordinary (and legal)
+ * component, so a POSIX filename such as `a:b.txt` emitted by
+ * `@electron/asar` must not be rejected there; rejecting it broke every
+ * archive that ships such a member (#3874). The check stays fail-closed on
+ * Windows: a literal `a:b.txt` still trips the drive-prefix rule rather than
+ * being written to a confusing location.
+ */
+export const normalizeArtifactPath = (
+  input: string,
+  platform: NodeJS.Platform = process.platform,
+): string => {
+  if (
+    input.includes("\0") ||
+    input.startsWith("/") ||
+    (platform === "win32" && DRIVE_PREFIX.test(input))
+  )
     throw new ArtifactReaderFailure(
       "path",
       `Artifact path is absolute or unsafe: ${pathDiagnostic(input)}`,

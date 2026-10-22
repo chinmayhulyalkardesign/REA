@@ -1,17 +1,43 @@
 ---
 name: reverse-engineer-anything
-description: Reverse engineer native, managed, Electron/JavaScript, packaged, firmware, and browser targets with REA. Use shipped-artifact or requested runtime evidence to explain features, compare versions, decompile code, or guide a reconstruction. Skip REA for ordinary source-repository architecture analysis.
+description: Reverse engineer native, managed, Electron/JavaScript, packaged, firmware, and browser targets with REA. Use artifact analysis, requested runtime evidence, or public-source research to explain features, compare versions, decompile code, or guide a reconstruction, including when an artifact is unavailable. Skip REA for ordinary source-repository architecture analysis.
 metadata:
   version: "45"
 ---
 
 # REA
 
-Use REA when a claim depends on a shipped binary or package, decompilation,
-passive application runtime evidence, or comparison with
-behavior not established by available source. For ordinary analysis of a
+Use REA when an investigation concerns a shipped binary or package, decompilation,
+passive application runtime evidence, or behavior not established by available
+source. Public-source research can also help investigate software whose artifacts
+are unavailable. For ordinary analysis of a
 complete source repository, use normal repository tools and do not run REA
 readiness or provider commands.
+
+## Public-source research (OSINT)
+
+Web research is another tool alongside artifact analysis and runtime observation.
+Consider it when existing documentation or prior research could answer a question,
+orient an investigation, or suggest a useful lead. It can help explore features
+before opening a disassembler, understand a difficult mechanism, compare versions,
+or investigate historical, unavailable, or uninstalled software. It can also help
+with a focused question during local analysis, even when analysis engines are
+available. Choose it according to the question and evidence already at hand;
+there is no required research step or fixed ordering.
+
+Useful sources can include vendor documentation, release notes, archived pages,
+independent technical write-ups, blogs, and forum discussions. Searches using the
+app name, relevant version, feature, or mechanism can keep research focused.
+Follow promising leads into relevant code, resources, or runtime behavior when
+those are available; an investigation without an artifact can still yield useful
+findings within the limits of its public sources.
+
+Apply the same evidence distinctions to external findings: cite the source and
+separate its claims from locally observed behavior and your own inferences.
+Publication dates, software versions, platforms, and source provenance help judge
+applicability. Older or unmatched research can suggest hypotheses without
+establishing current behavior; recent publication alone does not establish a
+version match. Where verification is unavailable, preserve that uncertainty.
 
 ## Connect only when needed
 

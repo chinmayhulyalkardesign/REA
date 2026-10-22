@@ -146,3 +146,134 @@ it("retains the exact empty CommonJS export name", () => {
     "*",
   ]);
 });
+
+it.each([
+  "const table = { [`token`]: 'VALUE' }; const selected = table[`token`];",
+  "const table = { [true]: 'VALUE' }; const selected = table[true];",
+  "const table = { [false]: 'VALUE' }; const selected = table[false];",
+  "const table = { [null]: 'VALUE' }; const selected = table[null];",
+])("retains an exact supported primitive key in %s", (source) => {
+  const ir = analyzeJavaScriptSemantics(source);
+  expect(ir.bindings.find(({ name }) => name === "selected")?.value).toEqual({
+    status: "literal",
+    value: "VALUE",
+  });
+  expect(
+    ir.frontiers.filter(({ kind }) => kind === "dynamic-property"),
+  ).toEqual([]);
+});
+
+it("keeps arbitrary template expressions unresolved while retaining literal names", () => {
+  const ir = analyzeJavaScriptSemantics(
+    "const table = { [`token`]: 'VALUE' }; const selected = table[`token${suffix}`];",
+  );
+  expect(
+    ir.bindings.find(({ name }) => name === "selected")?.value.status,
+  ).toBe("unknown");
+});
+
+it("retains complete returned objects with all supported primitive computed keys", () => {
+  const ir = analyzeJavaScriptSemantics(`
+    export function create() {
+      return { [\`token\`]: "VALUE", [true]: 1, [false]: 2, [null]: 3 };
+    }
+  `);
+  expect(
+    ir.callables.find(({ name }) => name === "create")?.returnSites[0]?.value,
+  ).toEqual({
+    status: "object",
+    unknownProperties: false,
+    omittedProperties: 0,
+    properties: [
+      {
+        name: "false",
+        presence: "present",
+        value: { status: "literal", value: 2 },
+      },
+      {
+        name: "null",
+        presence: "present",
+        value: { status: "literal", value: 3 },
+      },
+      {
+        name: "token",
+        presence: "present",
+        value: { status: "literal", value: "VALUE" },
+      },
+      {
+        name: "true",
+        presence: "present",
+        value: { status: "literal", value: 1 },
+      },
+    ],
+  });
+});
+
+it("preserves partial returned-object coverage for an unresolved computed key", () => {
+  const ir = analyzeJavaScriptSemantics(`
+    export function create(key) { return { [\`token\`]: "VALUE", [key]: 1 }; }
+  `);
+  expect(
+    ir.callables.find(({ name }) => name === "create")?.returnSites[0]?.value,
+  ).toEqual({
+    status: "object",
+    unknownProperties: true,
+    omittedProperties: 1,
+    properties: [
+      {
+        name: "token",
+        presence: "present",
+        value: {
+          status: "unknown",
+          reason: "A later property may overwrite this value.",
+        },
+      },
+    ],
+  });
+});
+
+it("retains supported primitive literal method names", () => {
+  const ir = analyzeJavaScriptSemantics(`
+    const target = { [\`task\`]() { return 42; } };
+    class Holder { [true]() { return 2; } }
+  `);
+  expect(
+    ir.callables
+      .filter(({ kind }) => kind === "method")
+      .map(({ name }) => name),
+  ).toEqual(["task", "true"]);
+});
+
+it("retains literal-template environment keys", () => {
+  const ir = analyzeJavaScriptSemantics(
+    "const deployment = process.env[`DEPLOYMENT`];",
+  );
+  expect(
+    ir.configurationOperations.map(({ key, resolution }) => ({
+      key,
+      resolution,
+    })),
+  ).toEqual([{ key: "DEPLOYMENT", resolution: "complete" }]);
+});
+
+it.each([
+  ["`task`", "task"],
+  ["true", "true"],
+  ["false", "false"],
+  ["null", "null"],
+])("keeps the exact CommonJS export key %s", (key, expected) => {
+  const ir = analyzeJavaScriptSemantics(`module.exports[${key}] = 42;`);
+  expect(ir.moduleLinks.map(({ exportedName }) => exportedName)).toEqual([
+    expected,
+  ]);
+});
+
+it("keeps nonfinite numeric property names as exact strings", () => {
+  const ir = analyzeJavaScriptSemantics(
+    "const table = {[1e999]: 'VALUE'}; const selected = table[1e999];",
+  );
+  expect(ir.bindings.find(({ name }) => name === "selected")?.value).toEqual({
+    status: "literal",
+    value: "VALUE",
+  });
+});

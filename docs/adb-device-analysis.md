@@ -51,6 +51,7 @@ rea inspect-android-package /tmp/acq/com.whatsapp/base.apk
 # Device state and files
 rea list-adb-processes emulator-5554
 rea inspect-adb-window emulator-5554
+rea inspect-adb-view-hierarchy emulator-5554
 rea read-adb-setting emulator-5554 global adb_enabled
 rea read-adb-logcat emulator-5554 --count 200
 rea list-adb-directory emulator-5554 /data/data/com.whatsapp
@@ -76,32 +77,33 @@ existing analysis families directly, for example
 
 ## Operations
 
-| Tool                    | Kind               | What it does                                                                                                                                                                                                                          |
-| ----------------------- | ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `inspect_adb_client`    | read               | Resolved binary, version, install path; never contacts the server                                                                                                                                                                     |
-| `list_adb_devices`      | read               | Serial, state, transport, model metadata, inferred emulator/physical kind with basis                                                                                                                                                  |
-| `inspect_adb_device`    | read               | Fixed `getprop` whitelist: build, SDK, patch, fingerprint, product, ABIs, debuggable, `ro.kernel.qemu`                                                                                                                                |
-| `inspect_adb_display`   | read               | `wm size` and `wm density` as declared                                                                                                                                                                                                |
-| `list_adb_features`     | read               | `pm list features` (hardware/software features, hex GL versions)                                                                                                                                                                      |
-| `list_adb_services`     | read               | `service list` binder services and interfaces                                                                                                                                                                                         |
-| `list_adb_processes`    | read               | `ps -A`: user, pid, ppid, rss, state, name                                                                                                                                                                                            |
-| `inspect_adb_window`    | read               | `dumpsys window` focus declarations (what is on screen)                                                                                                                                                                               |
-| `read_adb_setting`      | read               | One `settings get` value; device-side null is reported as such                                                                                                                                                                        |
-| `read_adb_logcat`       | read               | Bounded `logcat -d -t` dump for one buffer, optional pid filter                                                                                                                                                                       |
-| `list_adb_packages`     | read               | `pm list packages -f` with scope; base APK device paths                                                                                                                                                                               |
-| `resolve_adb_packages`  | read               | Case-insensitive package-name substring search with exact-match flag                                                                                                                                                                  |
-| `inspect_adb_package`   | read               | `dumpsys package` projection: versions, install times, installer, flags, permission count                                                                                                                                             |
-| `list_adb_directory`    | read               | NUL-framed immediate children, including hidden entries: kinds, permissions, owner, group, sizes, symlink targets                                                                                                                     |
-| `pull_adb_package`      | read               | Complete split APK set from `pm path`, each file digested                                                                                                                                                                             |
-| `pull_adb_file`         | read               | One absolute device path pulled and digested                                                                                                                                                                                          |
-| `capture_adb_screen`    | read               | One `screencap -p` frame (exec-out, no device-side file) with dimensions                                                                                                                                                              |
-| `collect_adb_bugreport` | read               | Device-generated bugreport zip, digested                                                                                                                                                                                              |
-| `push_adb_file`         | **mutates device** | One local file to a device path (e.g. pushing tools into `/data/local/tmp`); checks for existing targets and refuses them without explicit overwrite (the check is not atomic); compares digests when device `sha256sum` is available |
-| `install_adb_package`   | **mutates device** | Local APK via `adb install [-r]`; preserves its Success/Failure verdict, records `replace_requested`, and leaves actual replacement `null` because prior package state is not observed                                                |
-| `uninstall_adb_package` | **mutates device** | Requests package removal for user 0 via `adb shell pm uninstall --user 0`, without data retention                                                                                                                                     |
-| `start_adb_app`         | **mutates device** | Resolves the package's launcher activity (`cmd package resolve-activity --brief`) and starts it (`am start -n`)                                                                                                                       |
-| `start_adb_activity`    | **mutates device** | Starts an intent (`am start -a` with optional URI, component, and up to 16 typed extras); preserves the activity manager's verdict                                                                                                    |
-| `stop_adb_app`          | **mutates device** | Force-stops every process of a package, ending a dynamic-analysis run                                                                                                                                                                 |
+| Tool                         | Kind               | What it does                                                                                                                                                                                                                          |
+| ---------------------------- | ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `inspect_adb_client`         | read               | Resolved binary, version, install path; never contacts the server                                                                                                                                                                     |
+| `list_adb_devices`           | read               | Serial, state, transport, model metadata, inferred emulator/physical kind with basis                                                                                                                                                  |
+| `inspect_adb_device`         | read               | Fixed `getprop` whitelist: build, SDK, patch, fingerprint, product, ABIs, debuggable, `ro.kernel.qemu`                                                                                                                                |
+| `inspect_adb_display`        | read               | `wm size` and `wm density` as declared                                                                                                                                                                                                |
+| `list_adb_features`          | read               | `pm list features` (hardware/software features, hex GL versions)                                                                                                                                                                      |
+| `list_adb_services`          | read               | `service list` binder services and interfaces                                                                                                                                                                                         |
+| `list_adb_processes`         | read               | `ps -A`: user, pid, ppid, rss, state, name                                                                                                                                                                                            |
+| `inspect_adb_window`         | read               | `dumpsys window` focus declarations (what is on screen)                                                                                                                                                                               |
+| `inspect_adb_view_hierarchy` | read               | `uiautomator dump` accessibility nodes (exec-out, no device-side file): class, ids, text, bounds, states, document digest                                                                                                             |
+| `read_adb_setting`           | read               | One `settings get` value; device-side null is reported as such                                                                                                                                                                        |
+| `read_adb_logcat`            | read               | Bounded `logcat -d -t` dump for one buffer, optional pid filter                                                                                                                                                                       |
+| `list_adb_packages`          | read               | `pm list packages -f` with scope; base APK device paths                                                                                                                                                                               |
+| `resolve_adb_packages`       | read               | Case-insensitive package-name substring search with exact-match flag                                                                                                                                                                  |
+| `inspect_adb_package`        | read               | `dumpsys package` projection: versions, install times, installer, flags, permission count                                                                                                                                             |
+| `list_adb_directory`         | read               | NUL-framed immediate children, including hidden entries: kinds, permissions, owner, group, sizes, symlink targets                                                                                                                     |
+| `pull_adb_package`           | read               | Complete split APK set from `pm path`, each file digested                                                                                                                                                                             |
+| `pull_adb_file`              | read               | One absolute device path pulled and digested                                                                                                                                                                                          |
+| `capture_adb_screen`         | read               | One `screencap -p` frame (exec-out, no device-side file) with dimensions                                                                                                                                                              |
+| `collect_adb_bugreport`      | read               | Device-generated bugreport zip, digested                                                                                                                                                                                              |
+| `push_adb_file`              | **mutates device** | One local file to a device path (e.g. pushing tools into `/data/local/tmp`); checks for existing targets and refuses them without explicit overwrite (the check is not atomic); compares digests when device `sha256sum` is available |
+| `install_adb_package`        | **mutates device** | Local APK via `adb install [-r]`; preserves its Success/Failure verdict, records `replace_requested`, and leaves actual replacement `null` because prior package state is not observed                                                |
+| `uninstall_adb_package`      | **mutates device** | Requests package removal for user 0 via `adb shell pm uninstall --user 0`, without data retention                                                                                                                                     |
+| `start_adb_app`              | **mutates device** | Resolves the package's launcher activity (`cmd package resolve-activity --brief`) and starts it (`am start -n`)                                                                                                                       |
+| `start_adb_activity`         | **mutates device** | Starts an intent (`am start -a` with optional URI, component, and up to 16 typed extras); preserves the activity manager's verdict                                                                                                    |
+| `stop_adb_app`               | **mutates device** | Force-stops every process of a package, ending a dynamic-analysis run                                                                                                                                                                 |
 
 For `inspect_adb_window`, `focus_contexts` retains each display header, its exact
 display ID when recognized, and every focus declaration with its original line.
@@ -116,6 +118,32 @@ they do not establish device-wide focus. Multiple contexts or repeated fields
 produce `ambiguous` with null singular fields and all declarations retained.
 When no focus field was declared, the status is `unavailable`. REA reads the
 displays section only when the windows section declares neither focus field.
+
+For `inspect_adb_view_hierarchy`, REA runs `uiautomator dump /dev/tty` through
+`adb exec-out`. On tested builds `adb shell` returns only uiautomator's status
+line, not the document. exec-out merges the device's stdout and stderr and does
+not report the device exit status, so non-document lines are kept verbatim in
+`device_messages`. `nodes` are in document order; `parent` refers to another
+node's `index`, and `sibling_index` is the node's own `index` attribute.
+`flags` lists boolean states declared `true`; `undeclared_flags` lists known
+states the node did not declare, which are unknown rather than false. Other
+non-empty attributes, and known values REA could not parse, are kept in
+`other_attributes`. `document_sha256` digests the exact document bytes.
+
+`hierarchy_status` is `captured` when a document was parsed, `not_idle` when
+uiautomator reported `could not get idle state` (common on screens with
+continuous animation), and `unavailable` when neither was observed. The two
+non-captured states mean the hierarchy is unknown, not empty. Nodes reflect
+what the accessibility service exposes: Jetpack Compose content without
+semantics, and other content without accessibility nodes, is absent. Compose
+nodes with semantics do appear, usually without a `resource_id`. Bounds are
+screen pixels; `inspect_adb_display` reports the density to convert them.
+
+The hierarchy is whatever is on screen, which is not always the foreground
+app. With the screen off (including always-on display) or locked, nodes come
+from the system UI, for example `com.android.systemui`, rather than the app
+behind it. Check each node's `package`, or pair the call with
+`inspect_adb_window`.
 
 For `install_adb_package`, `replace_requested` records whether `-r` was sent.
 The `replaced` result is `null`: the successful install response does not say

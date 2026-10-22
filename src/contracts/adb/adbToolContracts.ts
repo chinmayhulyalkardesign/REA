@@ -233,6 +233,21 @@ export const ADB_TOOL_CONTRACTS = [
     ],
   },
   {
+    name: "inspect_adb_view_hierarchy",
+    ...toolContractMetadata("inspect_adb_view_hierarchy"),
+    description:
+      "Read the on-screen accessibility view hierarchy (`uiautomator dump` through `adb exec-out`, no device-side file): per node, document order, parent, depth, class, package, resource-id, text, content-desc, pixel bounds and boolean states, plus the document's SHA-256. Screens that never become idle report hierarchy_status not_idle; Jetpack Compose content without semantics is absent. Read-only; no interaction occurs.",
+    kind: "adb-provider",
+    inputSchema: adbInputSchemas.inspect_adb_view_hierarchy,
+    outputSchema: evidenceResultOf(adbResultSchemas.inspect_adb_view_hierarchy),
+    examples: [
+      {
+        title: "Inspect the on-screen view hierarchy",
+        input: { serial: "emulator-5554" },
+      },
+    ],
+  },
+  {
     name: "read_adb_setting",
     ...toolContractMetadata("read_adb_setting"),
     description:

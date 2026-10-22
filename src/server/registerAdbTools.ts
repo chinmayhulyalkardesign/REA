@@ -39,6 +39,7 @@ export const registerAdbTools = (
     toolContract("list_adb_services"),
     toolContract("inspect_adb_display"),
     toolContract("inspect_adb_window"),
+    toolContract("inspect_adb_view_hierarchy"),
     toolContract("read_adb_setting"),
     toolContract("collect_adb_bugreport"),
     toolContract("resolve_adb_packages"),

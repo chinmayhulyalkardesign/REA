@@ -114,6 +114,16 @@ try {
           window.focused_window === null,
         `focused_window=${String(window.focused_window).slice(0, 60)} (null is legitimate on headless devices)`,
       );
+    const hierarchy = await run("inspect_adb_view_hierarchy", { serial });
+    if (hierarchy !== null)
+      check(
+        "view hierarchy observation completed",
+        hierarchy.hierarchy_status === "captured"
+          ? hierarchy.nodes.length > 0 &&
+              typeof hierarchy.document_sha256 === "string"
+          : ["not_idle", "unavailable"].includes(hierarchy.hierarchy_status),
+        `status=${hierarchy.hierarchy_status} nodes=${hierarchy.nodes.length} (not_idle is legitimate on animated screens)`,
+      );
     const display = await run("inspect_adb_display", { serial });
     if (display !== null)
       check(

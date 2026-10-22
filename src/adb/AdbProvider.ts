@@ -100,6 +100,7 @@ import {
   parsePmPathOutput,
 } from "./AdbDeviceOutput.js";
 import { adbHostFileName } from "./AdbHostFileName.js";
+import { parseUiAutomatorDump } from "./AdbViewHierarchy.js";
 import {
   AdbInputSnapshotFailure,
   snapshotAdbInput,
@@ -148,6 +149,9 @@ const LOGCAT_MAX_OUTPUT_BYTES = 4 * 1024 * 1024;
 const DUMPSYS_PACKAGE_TIMEOUT_MS = 60_000;
 const DUMPSYS_PACKAGE_MAX_OUTPUT_BYTES = 8 * 1024 * 1024;
 const DUMPSYS_WINDOW_MAX_OUTPUT_BYTES = 8 * 1024 * 1024;
+// uiautomator waits up to 10 seconds for an idle UI before dumping.
+const VIEW_HIERARCHY_TIMEOUT_MS = 30_000;
+const VIEW_HIERARCHY_MAX_OUTPUT_BYTES = 8 * 1024 * 1024;
 const LISTING_TIMEOUT_MS = 30_000;
 const LISTING_MAX_OUTPUT_BYTES = 4 * 1024 * 1024;
 const SETTINGS_TIMEOUT_MS = 20_000;
@@ -1787,6 +1791,58 @@ export class AdbProvider {
                       "Multiple focus contexts or repeated declarations prevent a singular focus summary; inspect focus_contexts for every declaration",
                     ]
                   : []),
+              ],
+            },
+          ),
+        );
+      }
+      case "inspect_adb_view_hierarchy": {
+        // `adb shell` drops the document written to /dev/tty on tested
+        // builds; exec-out returns it, merged with uiautomator's messages.
+        const captured = await runAdbCapture(
+          operation,
+          request.input.serial,
+          selection.binary,
+          adbArguments(request.input.serial, [
+            "exec-out",
+            "uiautomator",
+            "dump",
+            "/dev/tty",
+          ]),
+          {
+            timeoutMs: VIEW_HIERARCHY_TIMEOUT_MS,
+            maxOutputBytes: VIEW_HIERARCHY_MAX_OUTPUT_BYTES,
+          },
+          signal,
+        );
+        if (!captured.ok) return captured;
+        const parsed = parseUiAutomatorDump(captured.value.stdout);
+        if (!parsed.ok)
+          return err(
+            new AnalysisProtocolError(parsed.error.message, {
+              cause: parsed.error,
+            }),
+          );
+        const hierarchy = parsed.value;
+        return ok(
+          createAnalysisExecution(
+            { client, serial: request.input.serial, ...hierarchy },
+            provider,
+            {
+              limitations: [
+                "Ran `uiautomator dump /dev/tty` through `adb exec-out`; no device-side file was written and no interaction occurred",
+                "Nodes are what the accessibility service exposed at read time. Content without accessibility nodes, including Jetpack Compose content without semantics, is absent; a missing node is not evidence that nothing is drawn there",
+                "Bounds are screen pixels in the current display configuration; inspect_adb_display reports the density needed to convert them",
+                "`adb exec-out` merges the device's stdout and stderr and does not return its exit status; device_messages keep the non-document lines verbatim",
+                ...(hierarchy.hierarchy_status === "not_idle"
+                  ? [
+                      "uiautomator could not reach an idle UI, which is common on screens with continuous animation; the hierarchy is unknown, not empty",
+                    ]
+                  : hierarchy.hierarchy_status === "unavailable"
+                    ? [
+                        "No hierarchy document was returned and no known reason was reported; the hierarchy is unknown, not empty",
+                      ]
+                    : []),
               ],
             },
           ),

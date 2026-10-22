@@ -56,6 +56,7 @@ export const createAdbDeviceAnalysisProvider = () => ({
       inspect_adb_device: { properties: [{ name: "ro.build.version.sdk", value: "35" }], emulator_observed: true },
       list_adb_processes: { processes: [{ name: "probe" }], columns: "pid name" },
       inspect_adb_window: { focused_window: null },
+      inspect_adb_view_hierarchy: { hierarchy_status: "not_idle", nodes: [] },
       inspect_adb_display: { physical_size: { width: 2, height: 2 }, physical_density: 1 },
       read_adb_setting: { value: "1" },
       read_adb_logcat: { lines: [], coverage: "complete" },

@@ -102,6 +102,7 @@ export const CLI_COMMANDS = Object.freeze({
   listAdbServices: "list-adb-services",
   inspectAdbDisplay: "inspect-adb-display",
   inspectAdbWindow: "inspect-adb-window",
+  inspectAdbViewHierarchy: "inspect-adb-view-hierarchy",
   readAdbSetting: "read-adb-setting",
   collectAdbBugreport: "collect-adb-bugreport",
   resolveAdbPackages: "resolve-adb-packages",

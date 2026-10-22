@@ -237,6 +237,16 @@ export const registerAdbCommands = (
     run: ({ args }) =>
       execute(CLI_COMMANDS.inspectAdbWindow, "inspect_adb_window", args),
   });
+  cli.command(CLI_COMMANDS.inspectAdbViewHierarchy, {
+    description: "Read the on-screen accessibility view hierarchy",
+    args: z.object({ serial }),
+    run: ({ args }) =>
+      execute(
+        CLI_COMMANDS.inspectAdbViewHierarchy,
+        "inspect_adb_view_hierarchy",
+        args,
+      ),
+  });
   cli.command(CLI_COMMANDS.readAdbSetting, {
     description: "Read one settings value from system, secure, or global",
     args: z.object({

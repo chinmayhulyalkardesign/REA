@@ -235,6 +235,11 @@ export const adbInputSchemas = {
       "Device serial exactly as `adb devices` reports it",
     ),
   }),
+  inspect_adb_view_hierarchy: z.strictObject({
+    serial: deviceSerialSchema.describe(
+      "Device serial exactly as `adb devices` reports it",
+    ),
+  }),
   read_adb_setting: z.strictObject({
     serial: deviceSerialSchema.describe(
       "Device serial exactly as `adb devices` reports it",
@@ -417,6 +422,10 @@ export const adbRequestSchema = z.discriminatedUnion("operation", [
     input: adbInputSchemas.inspect_adb_window,
   }),
   z.strictObject({
+    operation: z.literal("inspect_adb_view_hierarchy"),
+    input: adbInputSchemas.inspect_adb_view_hierarchy,
+  }),
+  z.strictObject({
     operation: z.literal("read_adb_setting"),
     input: adbInputSchemas.read_adb_setting,
   }),
@@ -503,6 +512,52 @@ export const adbWindowFocusContextSchema = z.strictObject({
   ),
 });
 export type AdbWindowFocusContext = z.infer<typeof adbWindowFocusContextSchema>;
+
+/** Boolean node attributes uiautomator declares; `flags` lists those declared true. */
+export const ADB_VIEW_NODE_FLAGS = [
+  "checkable",
+  "checked",
+  "clickable",
+  "enabled",
+  "focusable",
+  "focused",
+  "scrollable",
+  "long-clickable",
+  "password",
+  "selected",
+] as const;
+
+/** One accessibility node in document order, with its declared attributes. */
+export const adbViewNodeSchema = z.strictObject({
+  /** Zero-based document order; `parent` refers to this index. */
+  index: z.number().int().nonnegative(),
+  parent: z.number().int().nonnegative().nullable(),
+  depth: z.number().int().nonnegative(),
+  /** The node's own `index` attribute: its position among siblings. */
+  sibling_index: z.number().int().nonnegative().nullable(),
+  class_name: z.string().nullable(),
+  package: z.string().nullable(),
+  resource_id: z.string().nullable(),
+  text: z.string().nullable(),
+  content_desc: z.string().nullable(),
+  /** Screen pixels as declared; null when absent or not `[l,t][r,b]`. */
+  bounds: z
+    .strictObject({
+      left: z.number().int(),
+      top: z.number().int(),
+      right: z.number().int(),
+      bottom: z.number().int(),
+    })
+    .nullable(),
+  flags: z.array(z.enum(ADB_VIEW_NODE_FLAGS)),
+  /** Known boolean attributes absent from this node: unknown, not false. */
+  undeclared_flags: z.array(z.enum(ADB_VIEW_NODE_FLAGS)),
+  /** Other non-empty attributes and unparsable known values, verbatim. */
+  other_attributes: z.array(
+    z.strictObject({ name: z.string().min(1), value: z.string() }),
+  ),
+});
+export type AdbViewNode = z.infer<typeof adbViewNodeSchema>;
 
 /** Portable ADB observations with explicit identity and coverage limitations. */
 export const adbResultSchemas = {
@@ -701,6 +756,29 @@ export const adbResultSchemas = {
     focused_window: z.string().nullable(),
     focused_app: z.string().nullable(),
     observed_lines: z.array(z.string().min(1)),
+  }),
+  inspect_adb_view_hierarchy: z.strictObject({
+    client,
+    serial: z.string().min(1),
+    /**
+     * `captured`: a hierarchy document was returned and parsed.
+     * `not_idle`: uiautomator reported it could not reach an idle UI.
+     * `unavailable`: no hierarchy document and no recognized reason.
+     */
+    hierarchy_status: z.enum(["captured", "not_idle", "unavailable"]),
+    rotation: z.number().int().nullable(),
+    nodes: z.array(adbViewNodeSchema),
+    /** Digest and size of the exact hierarchy document bytes, when present. */
+    document_sha256: z
+      .string()
+      .regex(/^[a-f0-9]{64}$/u)
+      .nullable(),
+    document_bytes: z.number().int().nonnegative().nullable(),
+    /**
+     * Non-document output lines. `adb exec-out` merges the device's stdout
+     * and stderr, so their original stream is unknown.
+     */
+    device_messages: z.array(z.string().min(1)),
   }),
   read_adb_setting: z.strictObject({
     client,

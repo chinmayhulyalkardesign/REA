@@ -32,7 +32,7 @@ const fixture = async (mode = "ok", failCleanup = false) => {
   await writeFile(
     script,
     `import {readFileSync, writeFileSync, chmodSync, truncateSync} from 'node:fs';
-if (process.argv.includes('--version')) { console.log(${JSON.stringify(mode)} === 'bad-version' ? 'sigrok-cli 0.7.1' : 'sigrok-cli 0.7.2\\nlibsigrokdecode 0.5.3'); console.error('version warning'); }
+if (process.argv.includes('--version')) { console.log(${JSON.stringify(mode)} === 'bad-version' ? 'sigrok-cli 0.7.1' : 'sigrok-cli 0.7.2\\nlibsigrokdecode 0.5.3'); console.error('version warning'); if (${JSON.stringify(mode)} === 'failed-version') process.exitCode = 1; }
 else if (${JSON.stringify(mode)} === 'bad-version') console.log('unexpected version fallback');
 else if (${JSON.stringify(mode)} === 'nonzero') { console.error('invalid decoder'); process.exitCode = 1; }
 else if (${JSON.stringify(mode)} === 'unknown-decoder') { console.error("srd: ModuleNotFoundError: Failed to load decoder nosuchdecoder: import by name failed: No module named 'nosuchdecoder'\\nFailed to load protocol decoder nosuchdecoder."); process.exitCode = 1; }
@@ -703,6 +703,7 @@ it("attributes discovery admission failures to discovery while sharing the decod
 
 it.each([
   "bad-version",
+  "failed-version",
   "nonzero",
   "overflow",
   "line-budget",
@@ -732,6 +733,25 @@ it.each([
       stdout: "sigrok-cli 0.7.1\n",
       stderr: "version warning\n",
     });
+  if (mode === "failed-version") {
+    const decoded = await f.service.decode({ path: f.path, decoders: "uart" });
+    if (decoded.ok) throw new Error("Expected decode failure");
+    for (const error of [result.error, decoded.error]) {
+      const projected = projectAnalysisError(error);
+      expect(projected).toMatchObject({
+        code: "capability_unavailable",
+        details: {
+          captured_output: {
+            exit_code: 1,
+            stdout: "sigrok-cli 0.7.2\nlibsigrokdecode 0.5.3\n",
+            stderr: "version warning\n",
+          },
+        },
+      });
+      expect(projected.message).toContain("REA_SIGROK_COMMAND");
+      expect(projected.message).toContain("REA_SIGROK_PRLIMIT_COMMAND");
+    }
+  }
   if (mode === "overflow") {
     expect(result.error).toBeInstanceOf(AnalysisResourceConstraintError);
     if (!(result.error instanceof AnalysisResourceConstraintError))

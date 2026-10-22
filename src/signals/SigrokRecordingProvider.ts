@@ -248,6 +248,11 @@ export class SigrokRecordingProvider implements SignalRecordingPort {
             { capturedOutput, userMessage: rejection.message },
             [rejection],
           );
+        // A completed probe that fails is a configuration fault, not an adapter failure.
+        if (output.exitCode !== 0 && phase === "configuration")
+          throw new Error(
+            `sigrok-cli --version exited with status ${String(output.exitCode)}; inspect the selected installation.`,
+          );
         if (output.exitCode !== 0)
           throw new ProviderAdapterError(
             SIGROK_PROVIDER_IDENTITY.id,

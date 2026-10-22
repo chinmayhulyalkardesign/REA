@@ -59,10 +59,18 @@ its own descriptor. It does not duplicate script bytes.
 - Ordinary query-free `.js`, `.mjs`, and `.cjs` URL paths are arranged under a
   directory for each origin, preserving their relative module layout when it
   is unambiguous.
-- Competing versions, query/fragment variants, case and file/directory prefix
-  collisions, inline sources, and unrepresentable paths use unique isolated
-  names with a stated reason. Missing competing sources also prevent selection
-  of an apparently canonical version.
+- Competing versions, query/fragment variants, exact-path and file/directory
+  prefix collisions, inline sources, and unrepresentable paths are planned
+  before writing and use unique isolated names with a stated reason. Every
+  source in a planned collision is isolated. Missing competing sources also
+  prevent selection of an apparently canonical version.
+- Case-distinct spellings, such as `Case.js` and `case.js`, are distinct URL
+  paths and keep their URL-path layout when the destination filesystem can
+  store both. Isolation depends on the destination: when a later spelling's
+  write collides with an earlier one, only that later record moves to an
+  isolated name, with a `layout_reason` naming the pair. The spelling already
+  written keeps its canonical URL path. Check each record's `layout` and
+  `relative_path` rather than assuming one layout for every destination.
 
 ## Interpretation and limits
 

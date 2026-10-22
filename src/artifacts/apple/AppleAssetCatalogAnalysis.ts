@@ -134,6 +134,11 @@ const collectAssetCatalogs = async (input: {
   }[] = [];
   const uninspected: string[] = [];
   let totalMetadataBytes = 0;
+  let walk:
+    | { readonly kind: "complete" }
+    | { readonly kind: "failed"; readonly cause: unknown } = {
+    kind: "complete",
+  };
   try {
     for await (const entry of reader.entries(input.signal)) {
       // Reader paths are `/`-separated; only an entry named exactly
@@ -159,9 +164,22 @@ const collectAssetCatalogs = async (input: {
         );
       catalogs.push(inspected.catalog);
     }
-  } finally {
-    await reader.close();
+  } catch (cause: unknown) {
+    walk = { kind: "failed", cause };
   }
+  // A failed close must report unverified release without replacing the
+  // diagnosis the caller acts on, so the walk failure stays primary.
+  try {
+    await reader.close();
+  } catch (closeCause: unknown) {
+    if (walk.kind === "failed")
+      throw ArtifactReaderFailure.withCleanup(
+        walk.cause,
+        ArtifactReaderFailure.cleanupObservation(closeCause, input.bundlePath),
+      );
+    throw closeCause;
+  }
+  if (walk.kind === "failed") throw walk.cause;
   // Without any readable catalog, unmatched resource keys would overstate an
   // absence that a skipped catalog entry may contradict.
   if (catalogs.length === 0 && uninspected.length > 0)

@@ -9,6 +9,7 @@ import * as processOutput from "../../process/ExecFileOutput.js";
 import { encodeNibArchiveFixture } from "./NibArchive.fixture.js";
 import type { analyzeInterfaceBuilderBundle } from "./InterfaceBuilderAnalysis.js";
 import { ArtifactReaderFailure } from "../ArtifactReader.js";
+import { DirectoryArtifactReader } from "../DirectoryArtifactReader.js";
 import {
   analyzeAppleAssetCatalogs,
   collectInterfaceBuilderResourceKeys,
@@ -144,6 +145,94 @@ describe("Apple asset catalog application workflow", () => {
     expect(result.limitations).not.toContainEqual(
       expect.stringContaining("No compiled Assets.car catalog"),
     );
+  });
+});
+
+describe("Apple asset catalog cleanup composition", () => {
+  // A coincident close failure must not erase the diagnosis the caller acts on.
+  it.each([
+    {
+      label: "integrity",
+      mutate: true,
+      reason: "integrity",
+      detail: "Asset catalog changed during inspection",
+    },
+    {
+      label: "format",
+      mutate: false,
+      reason: "format",
+      detail: "assetutil returned invalid JSON",
+    },
+  ])(
+    "retains the primary $label catalog failure when directory cleanup fails",
+    async ({ mutate, reason, detail }) => {
+      const bundle = await createTestTempDirectory("rea-asset-catalog-close-");
+      const resources = join(bundle, "Contents", "Resources");
+      await mkdir(resources, { recursive: true });
+      await writeFile(join(resources, "Assets.car"), "inert catalog fixture");
+      const closeFailure = new ArtifactReaderFailure(
+        "io",
+        "Directory artifact cleanup failed: close directory",
+        {
+          cleanup: {
+            reason: "close directory",
+            resources: [resources],
+          },
+        },
+      );
+      const close = vi
+        .spyOn(DirectoryArtifactReader.prototype, "close")
+        .mockRejectedValue(closeFailure);
+      try {
+        const rejected = await analyzeAppleAssetCatalogs({
+          environment: {},
+          bundlePath: bundle,
+          targetSha256: "a".repeat(64),
+          runAssetUtil: async (path) => {
+            if (mutate) await writeFile(path, "catalog mutated mid-inspection");
+            return mutate ? "[]" : "not json";
+          },
+        }).catch((cause: unknown) => cause);
+        expect(close).toHaveBeenCalled();
+        expect(rejected).toBeInstanceOf(ArtifactReaderFailure);
+        expect(rejected).toMatchObject({
+          reason,
+          message: expect.stringContaining(detail),
+          cleanup: {
+            reason: expect.stringContaining("close directory"),
+            resources: [resources],
+          },
+        });
+      } finally {
+        close.mockRestore();
+      }
+    },
+  );
+
+  it("reports the cleanup failure itself when the catalog walk succeeded", async () => {
+    const bundle = await createTestTempDirectory("rea-asset-catalog-only-");
+    const resources = join(bundle, "Contents", "Resources");
+    await mkdir(resources, { recursive: true });
+    await writeFile(join(resources, "Assets.car"), "inert catalog fixture");
+    const closeFailure = new ArtifactReaderFailure(
+      "io",
+      "Directory artifact cleanup failed: close directory",
+      { cleanup: { reason: "close directory", resources: [resources] } },
+    );
+    const close = vi
+      .spyOn(DirectoryArtifactReader.prototype, "close")
+      .mockRejectedValue(closeFailure);
+    try {
+      const rejected = await analyzeAppleAssetCatalogs({
+        environment: {},
+        bundlePath: bundle,
+        targetSha256: "a".repeat(64),
+        runAssetUtil: () => Promise.resolve("[]"),
+      }).catch((cause: unknown) => cause);
+      expect(rejected).toBe(closeFailure);
+    } finally {
+      close.mockRestore();
+    }
   });
 });
 

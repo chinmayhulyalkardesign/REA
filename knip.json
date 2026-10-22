@@ -1,22 +1,30 @@
 {
   "$schema": "./node_modules/knip/schema.json",
-  "entry": [
-    "src/main.ts",
-    "src/cli.ts",
-    "src/composition/javascriptAnalysisWorkerProcess.ts",
-    "src/composition/webBundleAnalysisWorkerProcess.ts",
-    "src/contracts/errorSchemas.ts",
-    "src/evaluation/AgentEvaluationFixtures.ts",
-    "src/application/RealHopperAssertions.ts",
-    "scripts/verify/fridaBindingsCompatibility.ts",
-    "scripts/verify/termux/browser.mjs",
-    "scripts/verify-real-ghidra-noreturn.mjs",
-    "scripts/verify-real-ghidra-decompiler-failure.mjs",
-    "tests/processOwnershipRunner.ts"
-  ],
-  "project": ["src/**/*.ts", "tests/**/*.ts", "scripts/**/*.mjs"],
-  "vitepress": {
-    "entry": ["docs/.vitepress/config.ts"]
+  "workspaces": {
+    ".": {
+      "entry": [
+        "src/main.ts",
+        "src/cli.ts",
+        "src/composition/javascriptAnalysisWorkerProcess.ts",
+        "src/composition/webBundleAnalysisWorkerProcess.ts",
+        "src/contracts/errorSchemas.ts",
+        "src/evaluation/AgentEvaluationFixtures.ts",
+        "src/application/RealHopperAssertions.ts",
+        "scripts/verify/fridaBindingsCompatibility.ts",
+        "scripts/verify/termux/browser.mjs",
+        "scripts/verify-real-ghidra-noreturn.mjs",
+        "scripts/verify-real-ghidra-decompiler-failure.mjs",
+        "tests/processOwnershipRunner.ts"
+      ],
+      "project": ["src/**/*.ts", "tests/**/*.ts", "scripts/**/*.mjs"],
+      "vitepress": {
+        "entry": ["docs/.vitepress/config.ts"]
+      }
+    },
+    "experiments/mcap-inspection": {
+      "entry": ["cli.ts", "*.node-test.ts"],
+      "project": ["*.ts"]
+    }
   },
   "ignoreBinaries": ["^g\\+\\+$", "mkfifo"],
   "ignoreDependencies": [

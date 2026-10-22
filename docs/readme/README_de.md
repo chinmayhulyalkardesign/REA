@@ -109,11 +109,13 @@ Konfiguriere für native Analysen zuerst einen Provider. Native Befehle, Provide
 
 REA entwickelt sich schnell weiter; neue Versionen enthalten häufig Fehlerbehebungen. Halte deine Installation aktuell.
 
-Für eine über npm installierte CLI:
+Für eine mit `npm install --global` oder `bun add --global` installierte CLI:
 
 ```bash
 rea update
 ```
+
+Globale Updates mit Bun erfordern Bun 1.2.17 oder neuer. Aktualisiere Bun bei einer älteren Version manuell, bevor du `rea update` ausführst.
 
 Um die Agentenregistrierungen und den Skill zu aktualisieren, führe den Einrichtungsbefehl aus, den das Update ausgibt.
 
@@ -123,7 +125,7 @@ Wenn du `npx` verwendest, aktualisiere die Agenteneinrichtung mit:
 npx rea-agents@latest setup
 ```
 
-Prüfe die Änderungen und starte deinen Agenten neu. Für einzelne CLI-Aufrufe verwende `npx rea-agents@latest`, gefolgt vom gewünschten Befehl.
+Prüfe die Änderungen und starte deinen Agenten neu. Für einzelne CLI-Aufrufe verwende `npx rea-agents@latest`, gefolgt vom gewünschten Befehl. Mit Bun verwendest du `bunx rea-agents@latest` statt `npx rea-agents@latest`.
 
 ## So funktioniert REA
 
@@ -143,7 +145,9 @@ REA benötigt Node.js 22.x (>=22.19), 24.x (>=24.11) oder 26+ sowie npm. Zusätz
 | ----------------------------------- | --------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
 | Native Binärdateien                 | Pseudocode, Assemblercode, Zeichenketten, Symbole, Aufrufe und Verweise                                         | Hopper, Ghidra oder IDA; [native Analyse](../native-investigation.md)                                                                       |
 | Offline-ELF-Struktur                | Sektionen, Segmente, ursprüngliche Symbole/Relokationen und mögliche Schutzmaßnahmen aus statischer Analyse     | Vom Aufrufer bereitgestelltes pwntools unter Linux x64; [Binärdiagnostik](../binary-diagnostics.md)                                         |
+| Go-Binärdateien                     | Eingebettete Compilerversion, Module, Ersetzungen und Build-Einstellungen                                       | Integrierte statische ELF-/PE-/Thin-Mach-O-Prüfung; keine Go-Installation erforderlich                                                      |
 | EVM-Bytecode                        | Dispatch-Selektoren, Byte-Offsets, abgeleitete Argumente und Veränderbarkeit des Zustands                       | Lokale Eingabe mit Rohbytes oder Hexdarstellung unter Linux x64; [Offline-EVM-Leitfaden](../evm-bytecode.md)                                |
+| SQLite-Datenbanken                  | Tabellen, Spalten, Indizes, Views, Trigger und ausgewählte Zeilen gewöhnlicher Tabellen                         | Lokaler Datenbank-/WAL-Snapshot; Node.js 24.x >=24.15 oder 26+ mit den Grenzen der nativen SQLite-Unterstützung                             |
 | Rust binaries                       | Embedded cargo-auditable dependency list                                                                        | [Rust binaries](../rust-binaries.md)                                                                                                        |
 | ELF notes                           | PT_NOTE/SHT_NOTE owners, types, GNU build-id and ABI-tag fields                                                 | Built-in static ELF inspection; [ELF notes](../elf-notes.md)                                                                                |
 | Aufgezeichnete Linux-Abstürze       | Unverarbeitete Note-Einträge, Register/Signale aller aufgezeichneten Threads und optionale Zuordnungskandidaten | Vom Aufrufer bereitgestelltes pwntools unter Linux x64; optional GDB/pwndbg; [aufgezeichnete Abstürze](../recorded-crashes.md)              |
@@ -244,7 +248,7 @@ REA analysiert Ziele lokal. Dein Agent erhält die Werkzeugergebnisse; sein Mode
 
 Aktualisiere zuerst; eine neuere Version könnte den Fehler bereits behoben haben.
 
-Für eine über npm installierte CLI:
+Für eine mit `npm install --global` oder `bun add --global` installierte CLI:
 
 ```bash
 rea update

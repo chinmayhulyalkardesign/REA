@@ -109,11 +109,13 @@ rea --help
 
 REA thay đổi nhanh và các bản phát hành mới thường xuyên có bản sửa lỗi. Hãy giữ bản cài đặt của bạn được cập nhật.
 
-Với CLI được cài bằng npm:
+Với CLI được cài bằng `npm install --global` hoặc `bun add --global`:
 
 ```bash
 rea update
 ```
+
+Cập nhật toàn cục bằng Bun cần Bun 1.2.17 trở lên. Nếu dùng Bun cũ hơn, hãy nâng cấp Bun thủ công trước khi chạy `rea update`.
 
 Để cập nhật đăng ký tác nhân và skill, chạy lệnh thiết lập được in ra sau khi cập nhật.
 
@@ -123,7 +125,7 @@ Nếu dùng `npx`, cập nhật thiết lập tác nhân bằng:
 npx rea-agents@latest setup
 ```
 
-Xem lại thay đổi cấu hình và khởi động lại tác nhân. Với lệnh CLI dùng một lần, dùng `npx rea-agents@latest` rồi thêm lệnh cần chạy.
+Xem lại thay đổi cấu hình và khởi động lại tác nhân. Với lệnh CLI dùng một lần, dùng `npx rea-agents@latest` rồi thêm lệnh cần chạy. Với Bun, dùng `bunx rea-agents@latest` thay cho `npx rea-agents@latest`.
 
 ## Cách REA hoạt động
 
@@ -143,7 +145,9 @@ REA yêu cầu Node.js 22.x (>=22.19), 24.x (>=24.11) hoặc 26+, cùng với np
 | --------------------------------- | --------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
 | Tệp nhị phân mã máy               | Mã giả, hợp ngữ, chuỗi, ký hiệu, lời gọi và tham chiếu                                                          | Hopper, Ghidra hoặc IDA; [phân tích mã máy](../native-investigation.md)                                                                   |
 | Bố cục ELF ngoại tuyến            | Các section, segment, ký hiệu/thông tin tái định vị gốc và các biện pháp giảm thiểu có thể có từ phân tích tĩnh | pwntools do bên gọi cung cấp trên Linux x64; [chẩn đoán tệp nhị phân](../binary-diagnostics.md)                                           |
+| Tệp nhị phân Go                   | Phiên bản trình biên dịch, mô-đun, thay thế và thiết lập build được nhúng                                       | Kiểm tra tĩnh ELF/PE/thin Mach-O tích hợp sẵn; không cần cài Go                                                                           |
 | Bytecode EVM                      | Bộ chọn điều phối, độ lệch byte, tham số suy luận và khả năng thay đổi trạng thái                               | Đầu vào cục bộ chứa byte thô hoặc dạng thập lục phân trên Linux x64; [hướng dẫn EVM ngoại tuyến](../evm-bytecode.md)                      |
+| Cơ sở dữ liệu SQLite              | Bảng, cột, chỉ mục, view, trigger và các hàng được chọn của bảng thông thường                                   | Ảnh chụp cơ sở dữ liệu/WAL cục bộ; Node.js 24.x >=24.15 hoặc 26+ với giới hạn của SQLite gốc                                              |
 | Rust binaries                     | Embedded cargo-auditable dependency list                                                                        | [Rust binaries](../rust-binaries.md)                                                                                                      |
 | ELF notes                         | PT_NOTE/SHT_NOTE owners, types, GNU build-id and ABI-tag fields                                                 | Built-in static ELF inspection; [ELF notes](../elf-notes.md)                                                                              |
 | Sự cố Linux đã ghi lại            | Bản ghi note thô, thanh ghi/tín hiệu của mọi luồng được ghi lại và các ứng viên ánh xạ tùy chọn                 | pwntools do bên gọi cung cấp trên Linux x64; GDB/pwndbg tùy chọn; [sự cố đã ghi lại](../recorded-crashes.md)                              |
@@ -244,7 +248,7 @@ REA phân tích mục tiêu cục bộ. Tác nhân nhận kết quả công cụ
 
 Hãy cập nhật trước; một bản phát hành gần đây có thể đã sửa lỗi.
 
-Với CLI được cài bằng npm:
+Với CLI được cài bằng `npm install --global` hoặc `bun add --global`:
 
 ```bash
 rea update

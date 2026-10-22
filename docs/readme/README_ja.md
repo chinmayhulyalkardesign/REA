@@ -109,11 +109,13 @@ rea --help
 
 REA は更新が速く、新しいリリースには頻繁にバグ修正が含まれます。インストールしたバージョンを最新に保ってください。
 
-npm でインストールした CLI の場合：
+`npm install --global` または `bun add --global` でインストールした CLI の場合：
 
 ```bash
 rea update
 ```
+
+Bun でのグローバル更新には Bun 1.2.17 以降が必要です。古い Bun を使っている場合は、`rea update` を実行する前に Bun を手動で更新してください。
 
 エージェントの登録とスキルを更新するには、更新処理が表示するセットアップコマンドを実行してください。
 
@@ -123,7 +125,7 @@ rea update
 npx rea-agents@latest setup
 ```
 
-設定の変更を確認し、エージェントを再起動してください。単発の CLI 操作では、`npx rea-agents@latest` に続けてコマンドを指定します。
+設定の変更を確認し、エージェントを再起動してください。単発の CLI 操作では、`npx rea-agents@latest` に続けてコマンドを指定します。Bun では、`npx rea-agents@latest` の代わりに `bunx rea-agents@latest` を使います。
 
 ## REA の仕組み
 
@@ -143,7 +145,9 @@ REA には Node.js 22.x（>=22.19）、24.x（>=24.11）、または 26+ と npm
 | -------------------------------- | ------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
 | ネイティブバイナリ               | 疑似コード、アセンブリ、文字列、シンボル、呼び出し、参照                                    | Hopper、Ghidra、または IDA；[ネイティブ分析](../native-investigation.md)                                                                       |
 | オフライン ELF レイアウト        | セクション、セグメント、元のシンボル／再配置情報、静的解析によるセキュリティ対策の候補      | Linux x64 で利用者が用意する pwntools；[バイナリ診断](../binary-diagnostics.md)                                                                |
+| Go バイナリ                      | 埋め込まれたコンパイラーバージョン、モジュール、置換、ビルド設定                            | 組み込みの静的 ELF/PE/thin Mach-O 検査；Go のインストールは不要                                                                                |
 | EVM バイトコード                 | ディスパッチセレクター、バイトオフセット、推定された引数と状態変更の可否                    | Linux x64 上のローカルの生バイト／16 進数の入力ファイル；[オフライン EVM ガイド](../evm-bytecode.md)                                           |
+| SQLite データベース              | テーブル、列、インデックス、ビュー、トリガー、選択した通常テーブルの行                      | ローカルのデータベース/WAL スナップショット；Node.js 24.x >=24.15 または 26+（ネイティブ SQLite の制限あり）                                   |
 | Rust binaries                    | Embedded cargo-auditable dependency list                                                    | [Rust binaries](../rust-binaries.md)                                                                                                           |
 | ELF notes                        | PT_NOTE/SHT_NOTE owners, types, GNU build-id and ABI-tag fields                             | Built-in static ELF inspection; [ELF notes](../elf-notes.md)                                                                                   |
 | 記録済みの Linux クラッシュ      | 生の note レコード、記録された全スレッドのレジスター／シグナル、任意のマッピング候補        | Linux x64 で利用者が用意する pwntools；GDB/pwndbg は任意；[記録済みクラッシュ](../recorded-crashes.md)                                         |
@@ -246,7 +250,7 @@ REA は対象をローカルで分析します。エージェントはツール�
 
 まず更新してください。最近のリリースですでに修正されている可能性があります。
 
-npm でインストールした CLI の場合：
+`npm install --global` または `bun add --global` でインストールした CLI の場合：
 
 ```bash
 rea update

@@ -109,11 +109,13 @@ Para análise nativa, configure primeiro um provedor. Consulte o [guia de CLI e 
 
 O REA muda rapidamente, e novas versões incluem correções frequentes de bugs. Mantenha sua instalação atualizada.
 
-Para uma CLI instalada pelo npm:
+Para uma CLI instalada com `npm install --global` ou `bun add --global`:
 
 ```bash
 rea update
 ```
+
+Atualizações globais com Bun exigem Bun 1.2.17 ou posterior. Com uma versão mais antiga do Bun, atualize o Bun manualmente antes de executar `rea update`.
 
 Para atualizar os registros dos agentes e a skill, execute o comando de configuração exibido pela atualização.
 
@@ -123,7 +125,7 @@ Se você usa `npx`, atualize a configuração do agente com:
 npx rea-agents@latest setup
 ```
 
-Revise as alterações de configuração e reinicie seu agente. Para comandos avulsos da CLI, use `npx rea-agents@latest` seguido do comando.
+Revise as alterações de configuração e reinicie seu agente. Para comandos avulsos da CLI, use `npx rea-agents@latest` seguido do comando. Com Bun, use `bunx rea-agents@latest` no lugar de `npx rea-agents@latest`.
 
 ## Como o REA funciona
 
@@ -143,7 +145,9 @@ O REA requer Node.js 22.x (>=22.19), 24.x (>=24.11) ou 26+, além do npm. As fer
 | --------------------------- | ----------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
 | Binários nativos            | Pseudocódigo, assembly, strings, símbolos, chamadas e referências                                                       | Hopper, Ghidra ou IDA; [análise nativa](../native-investigation.md)                                                               |
 | Estrutura ELF sem execução  | Seções, segmentos, símbolos/relocações originais e possíveis mecanismos de mitigação identificados por análise estática | pwntools fornecido pelo chamador no Linux x64; [diagnóstico de binários](../binary-diagnostics.md)                                |
+| Binários Go                 | Versão do compilador, módulos, substituições e configurações de build incorporados                                      | Inspeção estática integrada de ELF/PE/Mach-O thin; não é necessário instalar o Go                                                 |
 | Bytecode EVM                | Seletores de despacho, offsets de bytes, argumentos inferidos e mutabilidade                                            | Entrada local com bytes brutos ou representação hexadecimal no Linux x64; [guia de EVM sem execução](../evm-bytecode.md)          |
+| Bancos de dados SQLite      | Tabelas, colunas, índices, views, triggers e linhas selecionadas de tabelas comuns                                      | Snapshot local do banco de dados/WAL; Node.js 24.x >=24.15 ou 26+ com os limites do SQLite nativo                                 |
 | Rust binaries               | Embedded cargo-auditable dependency list                                                                                | [Rust binaries](../rust-binaries.md)                                                                                              |
 | ELF notes                   | PT_NOTE/SHT_NOTE owners, types, GNU build-id and ABI-tag fields                                                         | Built-in static ELF inspection; [ELF notes](../elf-notes.md)                                                                      |
 | Falhas do Linux registradas | Registros note brutos, registradores/sinais de cada thread registrada e candidatos opcionais a mapeamentos              | pwntools fornecido pelo chamador no Linux x64; GDB/pwndbg opcionais; [falhas registradas](../recorded-crashes.md)                 |
@@ -244,7 +248,7 @@ O REA analisa os alvos localmente. Seu agente recebe os resultados das ferrament
 
 Atualize primeiro; uma versão recente pode já ter corrigido o problema.
 
-Para uma CLI instalada pelo npm:
+Para uma CLI instalada com `npm install --global` ou `bun add --global`:
 
 ```bash
 rea update

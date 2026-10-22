@@ -1,15 +1,8 @@
 import { createHash } from "node:crypto";
-import {
-  chmod,
-  lstat,
-  mkdir,
-  mkdtemp,
-  readFile,
-  rm,
-  writeFile,
-} from "node:fs/promises";
+import { chmod, lstat, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { expect, onTestFinished, test, vi } from "vitest";
+import { expect, test, vi } from "vitest";
+import { createTestTempDirectory } from "../../tests/fixtures/temporaryDirectory.js";
 
 const adbTestHooks = vi.hoisted(() => ({
   afterScreencap: undefined as (() => void) | undefined,
@@ -44,8 +37,7 @@ const VERSION_BLOCK =
 const writeAdbStub = async (
   body: (root: string) => string,
 ): Promise<{ readonly binary: string; readonly root: string }> => {
-  const root = await mkdtemp(join("/tmp", "rea-adb-"));
-  onTestFinished(() => rm(root, { recursive: true, force: true }));
+  const root = await createTestTempDirectory("rea-adb-");
   const binary = join(root, "adb");
   await writeFile(binary, `#!/bin/sh\n${body(root)}\n`, { mode: 0o755 });
   await chmod(binary, 0o755);

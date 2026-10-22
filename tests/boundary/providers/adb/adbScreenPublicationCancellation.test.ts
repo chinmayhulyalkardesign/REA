@@ -1,5 +1,13 @@
 import { createHash } from "node:crypto";
-import { link, lstat, open, readFile, rm } from "node:fs/promises";
+import {
+  link,
+  lstat,
+  mkdir,
+  open,
+  readFile,
+  rm,
+  symlink,
+} from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
 import { afterEach, expect, onTestFinished, test, vi } from "vitest";
 
@@ -98,7 +106,10 @@ test("retains a committed screen capture receipt when cancellation arrives after
     await actualFs.link(...args);
     controller.abort(abortReason);
   });
-  const output = join(f.root, "captures");
+  const physical = join(f.root, "captures");
+  const output = join(f.root, "selected-captures");
+  await mkdir(physical);
+  await symlink(physical, output, "junction");
   const result = await f.provider.execute(
     {
       operation: "capture_adb_screen",
@@ -117,7 +128,7 @@ test("retains a committed screen capture receipt when cancellation arrives after
     confidence: "observed",
     parameters: { serial: "device", output_directory: output },
     normalized_result: {
-      local_path: join(output, "screen.png"),
+      local_path: join(physical, "screen.png"),
       bytes: f.png.byteLength,
       sha256: createHash("sha256").update(f.png).digest("hex"),
       width: 1,
@@ -577,6 +588,9 @@ test.each([false, true])(
   "preserves the completed receipt after handle recovery with root failure %s",
   async (rootFails) => {
     const f = await exclusiveScreenCloseFixture((attempt) => attempt === 1);
+    const output = join(f.root, "selected-captures");
+    await mkdir(f.output);
+    await symlink(f.output, output, "junction");
     let runtimePath: string | undefined;
     if (rootFails)
       vi.spyOn(PrivateRuntimeRoot.prototype, "close").mockImplementationOnce(
@@ -587,13 +601,14 @@ test.each([false, true])(
       );
     const result = await f.provider.execute({
       operation: "capture_adb_screen",
-      input: { serial: "device", output_directory: f.output },
+      input: { serial: "device", output_directory: output },
     });
     expect(result.ok).toBe(false);
     if (result.ok) throw new Error("expected close failure");
     expect(parseEvidence(result.error.partialObservation)).toMatchObject({
       operation: "capture_adb_screen",
       confidence: "observed",
+      parameters: { serial: "device", output_directory: output },
       normalized_result: { local_path: f.destination, bytes: f.png.byteLength },
     });
     expect(result.error.cleanupIncomplete).toBe(rootFails);

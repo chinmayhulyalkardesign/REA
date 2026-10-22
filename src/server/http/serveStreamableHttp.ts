@@ -209,11 +209,9 @@ const isInitializePost = async (request: Request): Promise<boolean> => {
   try {
     const read = await readRequestBody(probe);
     if (read.tooLarge) return false;
-    const body: unknown = JSON.parse(read.text);
-    // The transport accepts only a lone initialize, so only that may evict a session.
-    return Array.isArray(body)
-      ? body.length === 1 && isInitializeRequest(body[0])
-      : isInitializeRequest(body);
+    // Only a lone initialize may evict a session. A batch, even one holding a
+    // single initialize, is left to the live transport, which refuses it.
+    return isInitializeRequest(JSON.parse(read.text));
   } catch {
     return false;
   } finally {

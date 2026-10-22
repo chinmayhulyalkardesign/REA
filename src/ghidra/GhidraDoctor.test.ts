@@ -244,7 +244,9 @@ describe("Windows Ghidra doctor authority", () => {
       ok: false,
       classification: "missing_dependency",
       detail: WINDOWS_NATIVE_AUTHORITY_UNAVAILABLE_REASON,
-      remediation: expect.stringContaining("matching Windows x64 REA package"),
+      remediation: expect.stringContaining(
+        "matches this Windows host's architecture",
+      ),
     });
   });
 
@@ -284,7 +286,12 @@ describe("Windows native doctor failure diagnostics", () => {
   afterEach(() => vi.restoreAllMocks());
 
   it.each([
-    ["host", "unsupported_host", "unsupported_host", "Windows x64 host"],
+    [
+      "host",
+      "unsupported_host",
+      "unsupported_host",
+      "Windows x64 or arm64 host",
+    ],
     [
       "artifact",
       "runtime_missing",

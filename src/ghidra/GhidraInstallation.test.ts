@@ -471,6 +471,45 @@ describe("Ghidra Windows installation commitment", () => {
   });
 });
 
+describe("Ghidra Windows arm64 installation", () => {
+  it("accepts Windows arm64 with a win_arm_64 native decompiler and aarch64 JDK", () => {
+    const decompiler = `${WINDOWS_INSTALL}\\Ghidra\\Features\\Decompiler\\os\\win_arm_64\\decompile.exe`;
+    const windowsHost: GhidraInstallationHost = {
+      platform: "win32",
+      architecture: "arm64",
+      readText: (path) =>
+        path === WINDOWS_PROPERTIES
+          ? `application.version=${SUPPORTED_GHIDRA_VERSION}\napplication.java.min=21\n`
+          : undefined,
+      executable: (path) => path === WINDOWS_HEADLESS || path === decompiler,
+      probeJava: () => ({
+        ...JAVA,
+        home: "C:\\Java\\jdk-21",
+        osArch: "aarch64",
+        osName: "Windows 11",
+      }),
+    };
+
+    expect(
+      inspectGhidraInstallation(
+        {
+          environment: {},
+          installDir: WINDOWS_INSTALL,
+          javaHome: "C:\\Java\\jdk-21",
+          platform: "win32",
+          architecture: "arm64",
+        },
+        windowsHost,
+      ),
+    ).toMatchObject({
+      status: "available",
+      platform: "win32",
+      architecture: "arm64",
+      nativeDecompilerPath: decompiler,
+    });
+  });
+});
+
 describe("Ghidra installation rejection diagnostics", () => {
   it.each([
     {

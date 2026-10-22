@@ -594,22 +594,27 @@ cause. Either way the partial folder stays in place for inspection; remove it
 before retrying, since the next attempt refuses the non-empty directory.
 
 A `cancelled` result does not by itself determine the exit status; it depends on
-the command's signal handling. Commands routed through the shared
-`withCommandCancellation` handler in the CLI set status `130` for SIGINT or
-`143` for SIGTERM after their operation settles. Current source registrations
-use that handler for process capture and comparison (`capture-process`,
-`compare-process-captures`), JavaScript application analysis (`analyze` when it
-selects the JavaScript lane, and `analyze-javascript-application`), selected
-browser, web and Electron commands (including `analyze-web-bundle`,
+the command's signal handling. A command whose CLI registration wraps its
+operation with the shared `withCommandCancellation` handler
+(`src/cli/commandCancellation.ts`) sets status `130` for SIGINT or `143` for
+SIGTERM after the operation settles. Current source registrations use that
+wrapper for process capture and comparison (`capture-process`,
+`compare-process-captures`), JavaScript application analysis and source recovery
+(`analyze` when it selects the JavaScript lane, `analyze-javascript-application`
+and `recover-javascript-sources`), desktop, browser, web and Electron commands
+(including `inspect-desktop-application`, `analyze-web-bundle`,
 `observe-web-execution`, `capture-browser-scenario` and
-`capture-electron-scenario`), and the platform and provider command families
-for Android/ADB, Apktool/JEB/Flutter, firmware, PCAP and signal analysis,
-WASM/EVM, Go/Rust and binary diagnostics, Frida instrumentation, the Cutter
-command, objdump, Rizin and GDB, and the agent environment server
-(`environment-serve`). In these paths, a returned structured
-`cancelled` result can be printed before the wrapper assigns the
-signal-derived status. This describes the current source routing; it is not a
-claim that every command or provider runtime has been independently exercised.
+`capture-electron-scenario`), the platform and provider command families for
+Android/ADB, Apktool/JEB/Flutter, firmware, PCAP and signal analysis, WASM/EVM,
+Go/Rust and binary diagnostics, IL2CPP metadata (`inspect-il2cpp-metadata`),
+SQLite (`inspect-sqlite-database`), Frida instrumentation, the Cutter command,
+objdump, Rizin and GDB, and `doctor` and the agent environment server
+(`environment-serve`). To identify the current set, search the CLI registration
+modules for the wrapper; this paragraph summarizes the registrations that use it
+today. In these paths, a returned structured `cancelled` result can be printed
+before the wrapper assigns the signal-derived status. This describes the current
+source routing; it is not a claim that every command or provider runtime has
+been independently exercised.
 
 Commands with `--evidence_output` select their delivered view, then publish the
 complete Evidence bundle atomically. Cancellation before publication leaves no

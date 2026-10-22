@@ -265,6 +265,79 @@ describe("capability failure reasons", () => {
   });
 });
 
+describe("Linux-only tool host support", () => {
+  it("classifies disabled Linux-only tools as unsupported_host on an unsupported host", () => {
+    const inventory = buildCapabilityInventory(status(), {
+      ...enabledPolicy,
+      signalRecordingHostSupported: false,
+      linuxX64ToolingHostSupported: false,
+    });
+    expect(
+      inventory.find(({ name }) => name === "decode_signal_recording"),
+    ).toMatchObject({
+      available: false,
+      reason: "unsupported_host",
+      remediation:
+        "Signal decoding requires Linux with util-linux prlimit and REA_SIGROK_COMMAND so expanded recordings are processed under an enforced address-space limit.",
+    });
+    expect(
+      inventory.find(({ name }) => name === "inspect_signal_decoders"),
+    ).toMatchObject({ available: false, reason: "unsupported_host" });
+    expect(
+      inventory.find(({ name }) => name === "inspect_binary_layout"),
+    ).toMatchObject({
+      available: false,
+      reason: "unsupported_host",
+      remediation:
+        "The initial real-verified pwntools artifact profile supports Linux x64 only.",
+    });
+    expect(
+      inventory.find(({ name }) => name === "inspect_recorded_crash"),
+    ).toMatchObject({
+      available: false,
+      reason: "unsupported_host",
+      remediation:
+        "The initial real-verified pwntools artifact profile supports Linux x64 only.",
+    });
+    expect(
+      inventory.find(({ name }) => name === "inspect_evm_interface"),
+    ).toMatchObject({
+      available: false,
+      reason: "unsupported_host",
+      remediation:
+        "Initial real-verified offline EVM interface profile supports Linux x64 only.",
+    });
+  });
+
+  it("keeps provider_missing for unconfigured Linux-only tools on a supported host", () => {
+    const inventory = buildCapabilityInventory(status(), {
+      ...enabledPolicy,
+      signalRecordingHostSupported: true,
+      linuxX64ToolingHostSupported: true,
+    });
+    expect(
+      inventory.find(({ name }) => name === "decode_signal_recording"),
+    ).toMatchObject({
+      available: false,
+      reason: "provider_missing",
+      remediation: expect.stringContaining("On Linux, supply sigrok-cli"),
+    });
+    expect(
+      inventory.find(({ name }) => name === "inspect_binary_layout"),
+    ).toMatchObject({ available: false, reason: "provider_missing" });
+    expect(
+      inventory.find(({ name }) => name === "inspect_recorded_crash"),
+    ).toMatchObject({ available: false, reason: "provider_missing" });
+    expect(
+      inventory.find(({ name }) => name === "inspect_evm_interface"),
+    ).toMatchObject({
+      available: false,
+      reason: "provider_missing",
+      remediation: expect.stringContaining("real-verified on Linux x64"),
+    });
+  });
+});
+
 describe("compact tool availability", () => {
   it("round-trips complete facts, omitted modes, and per-group client requirements", () => {
     const full = buildCapabilityInventory(status(), enabledPolicy);

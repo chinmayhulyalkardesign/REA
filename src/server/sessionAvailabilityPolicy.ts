@@ -1,6 +1,6 @@
 import type { AvailabilityPolicy } from "../application/CapabilityInventory.js";
 import type { OptionalProviderLoadFailures } from "../application/OptionalObservationProviders.js";
-import { platform } from "node:process";
+import { arch, platform } from "node:process";
 
 export interface SessionAvailabilityDefaults {
   readonly optionalProviderLoadFailures?:
@@ -43,6 +43,8 @@ export const sessionAvailabilityPolicy = (
       evmInterfaceEnabled:
         defaults.optionalFeatures?.evmInterfaceEnabled ?? false,
       processCaptureEnabled: platform !== "win32",
+      signalRecordingHostSupported: platform === "linux",
+      linuxX64ToolingHostSupported: platform === "linux" && arch === "x64",
       recordedCrashEnabled:
         defaults.optionalFeatures?.recordedCrashEnabled ?? false,
       binaryLayoutEnabled:

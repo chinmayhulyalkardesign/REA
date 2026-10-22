@@ -59,6 +59,10 @@ export type AvailabilityPolicy = {
   /** Fresh owner observation of the selected required EVM limiter. */
   readonly evmLimiterAvailability?: ProviderAvailability;
   readonly processCaptureEnabled: boolean;
+  /** Whether this host satisfies the Linux gating signal decoding requires at execution. */
+  readonly signalRecordingHostSupported?: boolean;
+  /** Whether this host satisfies the Linux x64 gating the pwntools-backed and EVM providers require at execution. */
+  readonly linuxX64ToolingHostSupported?: boolean;
   readonly optionalProviderLoadFailures?: OptionalProviderLoadFailures;
   readonly binaryLayoutEnabled?: boolean;
   readonly recordedCrashEnabled?: boolean;
@@ -471,11 +475,17 @@ const workflowAvailabilityFor = ({
   if (name === "inspect_binary_layout")
     return policy.binaryLayoutEnabled === true
       ? { reason: "available", remediation: null }
-      : {
-          reason: "provider_missing",
-          remediation:
-            "On Linux x64, set absolute REA_PWNTOOLS_PYTHON to caller-supplied Python with pwntools 4.15.0. No active binary target is required.",
-        };
+      : policy.linuxX64ToolingHostSupported === false
+        ? {
+            reason: "unsupported_host",
+            remediation:
+              "The initial real-verified pwntools artifact profile supports Linux x64 only.",
+          }
+        : {
+            reason: "provider_missing",
+            remediation:
+              "On Linux x64, set absolute REA_PWNTOOLS_PYTHON to caller-supplied Python with pwntools 4.15.0. No active binary target is required.",
+          };
   if (name === "inspect_packet_capture" || name === "inspect_packet_fields")
     return policy.packetCaptureEnabled === true
       ? { reason: "available", remediation: null }
@@ -487,11 +497,17 @@ const workflowAvailabilityFor = ({
   if (name === "decode_signal_recording" || name === "inspect_signal_decoders")
     return policy.signalRecordingEnabled === true
       ? { reason: "available", remediation: null }
-      : {
-          reason: "provider_missing",
-          remediation:
-            "On Linux, supply sigrok-cli 0.7.2 via absolute REA_SIGROK_COMMAND and util-linux prlimit (REA_SIGROK_PRLIMIT_COMMAND, default /usr/bin/prlimit). No active binary target or hardware is required; the tool is checked at execution.",
-        };
+      : policy.signalRecordingHostSupported === false
+        ? {
+            reason: "unsupported_host",
+            remediation:
+              "Signal decoding requires Linux with util-linux prlimit and REA_SIGROK_COMMAND so expanded recordings are processed under an enforced address-space limit.",
+          }
+        : {
+            reason: "provider_missing",
+            remediation:
+              "On Linux, supply sigrok-cli 0.7.2 via absolute REA_SIGROK_COMMAND and util-linux prlimit (REA_SIGROK_PRLIMIT_COMMAND, default /usr/bin/prlimit). No active binary target or hardware is required; the tool is checked at execution.",
+          };
   if (name === "inspect_wasm_artifact")
     return policy.wasmArtifactEnabled === true
       ? { reason: "available", remediation: null }
@@ -508,11 +524,17 @@ const workflowAvailabilityFor = ({
     return { reason: "available", remediation: null };
   if (name === "inspect_evm_interface") {
     if (policy.evmInterfaceEnabled !== true)
-      return {
-        reason: "provider_missing",
-        remediation:
-          "The bundled offline EVM interface profile is currently real-verified on Linux x64. No active binary target or chain endpoint is required.",
-      };
+      return policy.linuxX64ToolingHostSupported === false
+        ? {
+            reason: "unsupported_host",
+            remediation:
+              "Initial real-verified offline EVM interface profile supports Linux x64 only.",
+          }
+        : {
+            reason: "provider_missing",
+            remediation:
+              "The bundled offline EVM interface profile is currently real-verified on Linux x64. No active binary target or chain endpoint is required.",
+          };
     const limiter = policy.evmLimiterAvailability;
     if (limiter?.status === "unavailable")
       return { reason: "provider_missing", remediation: limiter.reason };
@@ -521,11 +543,17 @@ const workflowAvailabilityFor = ({
   if (name === "inspect_recorded_crash")
     return policy.recordedCrashEnabled === true
       ? { reason: "available", remediation: null }
-      : {
-          reason: "provider_missing",
-          remediation:
-            "On Linux x64, set absolute REA_PWNTOOLS_PYTHON to caller-supplied Python with pwntools 4.15.0. No active binary target is required.",
-        };
+      : policy.linuxX64ToolingHostSupported === false
+        ? {
+            reason: "unsupported_host",
+            remediation:
+              "The initial real-verified pwntools artifact profile supports Linux x64 only.",
+          }
+        : {
+            reason: "provider_missing",
+            remediation:
+              "On Linux x64, set absolute REA_PWNTOOLS_PYTHON to caller-supplied Python with pwntools 4.15.0. No active binary target is required.",
+          };
   if (kind === "firmware-provider") {
     const enabled =
       name === "inspect_firmware_regions"

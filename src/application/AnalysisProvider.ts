@@ -1,4 +1,3 @@
-import type { EvidenceCreationOptions } from "../domain/evidence.js";
 import type { ProviderInspectionScope } from "../providers/ProviderInspectionScope.js";
 import type { BinaryTarget } from "../domain/binaryTargetTypes.js";
 import type { OfficialToolName } from "../contracts/officialToolContracts.js";
@@ -13,6 +12,7 @@ import type { Result } from "../domain/result.js";
 import {
   createEvidence,
   type Evidence,
+  type EvidenceCreationOptions,
   type EvidenceLocation,
   type EvidenceSubjectTarget,
 } from "../domain/evidence.js";
@@ -147,7 +147,9 @@ export const createAnalysisExecutionEvidence = (
   input: unknown,
   execution: AnalysisExecution,
   confidence: "observed" | "derived",
-  options?: EvidenceCreationOptions,
+  options?: EvidenceCreationOptions & {
+    readonly authority?: Evidence["authority"];
+  },
 ): Evidence =>
   createEvidence(
     execution.subject === undefined
@@ -168,6 +170,9 @@ export const createAnalysisExecutionEvidence = (
         : { relationshipCoverage: execution.relationshipCoverage }),
       locations: execution.locations,
       confidence,
+      ...(options?.authority === undefined
+        ? {}
+        : { authority: options.authority }),
     },
     options,
   );

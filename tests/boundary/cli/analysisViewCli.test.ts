@@ -922,3 +922,15 @@ cliTest.for(
     expect(proof.listeners).toBeGreaterThan(0);
   },
 );
+
+cliTest(
+  "describes accepted parents through the shared analysis-view contract",
+  async ({ cli }) => {
+    const result = await cli.run({
+      arguments: ["inspect-analysis-view", "--help"],
+    });
+    expect(result.exitCode).toBe(0);
+    // A hand-written family list drifted from the contract, so help defers to it.
+    expect(result.stdout).toContain("inspect_analysis_view");
+  },
+);

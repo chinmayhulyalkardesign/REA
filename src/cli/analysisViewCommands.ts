@@ -80,8 +80,10 @@ export const registerAnalysisViewCommands = (
       }),
   });
   cli.command(CLI_COMMANDS.inspectAnalysisView, {
+    // The inspect_analysis_view contract owns the list of accepted parents and
+    // views; repeating it here let the help drift as producers were added.
     description:
-      "Project a selected view of completed Go build metadata, binary-layout, JavaScript application, native function/inventory, artifact-inventory, desktop-directory, WASM, Mach-O, Interface Builder, EVM, managed, Android package, Dart AOT, web network capture or pcap Evidence JSON",
+      "Project a selected view of completed analysis Evidence JSON without repeating the analysis; accepts the same parent Evidence and views as the inspect_analysis_view MCP tool",
     args: z.object({
       inputJson: z.string().describe("Inline workflow JSON or JSON file path"),
     }),

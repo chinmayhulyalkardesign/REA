@@ -73,6 +73,7 @@ import { managedApplicationGraphResultSchema } from "../domain/managed/managedAp
 import { artifactComparisonResultSchema } from "../domain/artifactComparison.js";
 import { functionComparisonResultSchema } from "../domain/functionComparisonSchemas.js";
 import { bundleComparisonResultSchema } from "../domain/bundleComparison.js";
+import { evidenceAuditResultSchema } from "../domain/evidenceAudit.js";
 import { changedBehaviorResultSchema } from "../domain/changedBehavior.js";
 import { callPathResultSchema } from "../domain/callPathSchemas.js";
 import { staticRuntimeCorrelationResultSchema } from "../domain/staticRuntimeCorrelation.js";
@@ -609,6 +610,7 @@ export const sessionOutputSchemas = {
     ]),
   ),
   compare_bundles: evidenceResultOf(bundleComparisonResultSchema),
+  audit_evidence_bundle: lifecycleResultOf(evidenceAuditResultSchema),
   find_changed_behavior: evidenceResultOf(changedBehaviorResultSchema),
   build_call_path: evidenceResultOf(callPathResultSchema),
   correlate_static_and_runtime: evidenceResultOf(

@@ -717,6 +717,7 @@ export const TOOL_EFFECTS: Readonly<Record<string, ToolEffects>> = {
   compare_functions: sessionEvidence,
   match_native_functions: sessionEvidence,
   compare_bundles: effects({ mutatesSession: true }),
+  audit_evidence_bundle: effects(),
   find_changed_behavior: sessionEvidence,
   build_call_path: sessionEvidence,
   correlate_static_and_runtime: sessionEvidence,

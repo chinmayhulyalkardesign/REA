@@ -1,6 +1,7 @@
 import { Cli, z } from "incur";
 
 import {
+  auditEvidenceBundleCommand,
   compareEvidenceBundlesCommand,
   exportEvidenceBundleCommand,
   importEvidenceBundleCommand,
@@ -45,6 +46,18 @@ export const registerEvidenceCommands = (
           options.overwrite,
         );
         return exported.ok ? exported.value : cliError(exported.error);
+      }),
+  });
+  cli.command(CLI_COMMANDS.evidenceAudit, {
+    description:
+      "Audit a canonical Evidence bundle for secrets and local paths",
+    args: z.object({
+      path: z.string().describe("Evidence bundle JSON path"),
+    }),
+    run: ({ args }) =>
+      logCliCommand(logger, "evidence-audit", async () => {
+        const audited = await auditEvidenceBundleCommand(args.path);
+        return audited.ok ? audited.value : cliError(audited.error);
       }),
   });
   cli.command(CLI_COMMANDS.compare, {

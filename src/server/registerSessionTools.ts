@@ -25,6 +25,7 @@ import type { ProviderAvailability } from "../application/AnalysisProvider.js";
 import { mcpProgressReporter } from "./mcpProgress.js";
 import { registerArtifactComparisonTool } from "./registerArtifactComparisonTool.js";
 import { registerBundleComparisonTool } from "./registerBundleComparisonTool.js";
+import { registerEvidenceAuditTool } from "./registerEvidenceAuditTool.js";
 import { registerCloseLifecycleTool } from "./registerCloseLifecycleTool.js";
 import { registerFunctionComparisonTool } from "./registerFunctionComparisonTool.js";
 import { registerInvestigationTools } from "./registerInvestigationTools.js";
@@ -292,6 +293,7 @@ export const registerSessionTools = (
   const compareArtifactsContract = toolContract("compare_artifacts");
   const compareFunctionsContract = toolContract("compare_functions");
   const compareBundlesContract = toolContract("compare_bundles");
+  const evidenceAuditContract = toolContract("audit_evidence_bundle");
   const snapshotContract = toolContract("get_evidence_bundle");
   const processResources = new ProcessCaptureResourceScope();
   server.registerTool(
@@ -420,6 +422,12 @@ export const registerSessionTools = (
     server,
     session,
     compareBundlesContract,
+    options.artifactResources,
+  );
+  registerEvidenceAuditTool(
+    server,
+    session,
+    evidenceAuditContract,
     options.artifactResources,
   );
   registerInvestigationTools(server, session);

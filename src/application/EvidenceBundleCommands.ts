@@ -21,6 +21,7 @@ import type { JsonValue } from "../domain/jsonValue.js";
 import { jsonValueSchema } from "../domain/jsonValue.js";
 import { err, ok, type Result } from "../domain/result.js";
 import { compareBundles } from "../domain/bundleComparison.js";
+import { auditEvidenceBundle } from "../domain/evidenceAudit.js";
 import { ArtifactResourceScope } from "../artifacts/ArtifactResourceScope.js";
 import {
   readEvidenceBundle,
@@ -256,6 +257,23 @@ export const compareEvidenceBundlesCommand = async (input: {
   if (!left.ok) return left;
   if (!right.ok) return right;
   return ok(jsonValueSchema.parse(compareBundles(left.value, right.value)));
+};
+
+/** Audit one canonical bundle for leaked secrets and local paths, read-only. */
+export const auditEvidenceBundleCommand = async (
+  path: string,
+): Promise<Result<JsonValue, AnalysisError>> => {
+  const loaded = await readImmutableEvidenceBundle(path);
+  if (!loaded.ok) return loaded;
+  try {
+    return ok(jsonValueSchema.parse(auditEvidenceBundle(loaded.value)));
+  } catch (cause: unknown) {
+    return err(
+      new EvidenceIntegrityError("Evidence bundle audit failed", {
+        cause,
+      }),
+    );
+  }
 };
 
 const projectWrite = (

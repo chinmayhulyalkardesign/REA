@@ -88,6 +88,7 @@ export const TOOL_EXAMPLE_OVERRIDES: Readonly<
     left_bundle_path: "/tmp/left-evidence.json",
     right_bundle_path: "/tmp/right-evidence.json",
   },
+  audit_evidence_bundle: { path: "/tmp/evidence.json" },
   inspect_with_objdump: {
     path: "/tmp/program",
     operation: "disassemble",

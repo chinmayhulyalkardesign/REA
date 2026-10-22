@@ -39,6 +39,34 @@ const LOCAL_FILE_DIAGNOSTICS = [
   ["reading", " locally failed:"],
 ] as const;
 
+/** Match an operand as a quoted value or a delimited token. */
+const diagnosticNamesOperand = (
+  diagnostic: string,
+  operand: string,
+): boolean => {
+  if (operand === "") return false;
+  if (
+    diagnostic.includes(`'${operand}'`) ||
+    diagnostic.includes(`"${operand}"`)
+  )
+    return true;
+  for (
+    let index = diagnostic.indexOf(operand);
+    index !== -1;
+    index = diagnostic.indexOf(operand, index + operand.length)
+  ) {
+    const before = diagnostic[index - 1];
+    const after = diagnostic[index + operand.length];
+    // A shorter path must not match the prefix of an unrelated longer path.
+    if (
+      (before === undefined || /[\s'"(]/u.test(before)) &&
+      (after === undefined || /[\s'":,;)]/u.test(after))
+    )
+      return true;
+  }
+  return false;
+};
+
 /** Project parsed command-owner facts without reinterpreting the rejection. */
 export const adbCommandCapturedOutput = (
   failure: ExecFileOutputFailure,
@@ -198,18 +226,42 @@ export const runAdbCapture = async (
         diagnostic,
       )
     ) {
+      const filePath = target.path;
       const localPath = target.localPath;
-      const path =
+      const samePath = filePath !== undefined && filePath === localPath;
+      const knownLocal =
         localPath !== undefined &&
         LOCAL_FILE_DIAGNOSTICS.some(([verb, suffix]) =>
           [localPath, `'${localPath}'`, `"${localPath}"`].some((operand) =>
             diagnostic.startsWith(`${verb} ${operand}${suffix}`),
           ),
-        )
-          ? localPath
-          : (target.path ?? target.device);
+        );
+      const namesFile =
+        filePath !== undefined && diagnosticNamesOperand(diagnostic, filePath);
+      const namesLocal =
+        localPath !== undefined &&
+        !samePath &&
+        (knownLocal || diagnosticNamesOperand(diagnostic, localPath));
+      // Attribute the refusal only when the diagnostic names one operand. If it
+      // names both distinct operands, keep the device identity rather than
+      // guessing. Equal operands are one identity. Generic file failures retain
+      // the addressed-path fallback owned by this command boundary.
+      const path = samePath
+        ? filePath
+        : namesFile && namesLocal
+          ? undefined
+          : namesFile
+            ? filePath
+            : namesLocal
+              ? localPath
+              : (filePath ?? target.device);
       return err(
-        new AnalysisUnsupportedTargetError(operation, path, excerpt, { cause }),
+        new AnalysisUnsupportedTargetError(
+          operation,
+          path ?? target.device,
+          excerpt,
+          { cause },
+        ),
       );
     }
     if (failure.killed)

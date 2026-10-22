@@ -24,6 +24,32 @@ const probe = (signal?: AbortSignal) =>
     signal,
   );
 
+const refusedCapture = async (
+  operation: string,
+  target: { device: string; path?: string; localPath?: string },
+  stderr: string,
+) => {
+  vi.mocked(execFileBytes).mockRejectedValueOnce(
+    Object.assign(new Error("command refused"), {
+      code: 1,
+      stdout: "",
+      stderr,
+      signal: null,
+      killed: false,
+    }),
+  );
+  const result = await runAdbCapture(
+    operation,
+    target,
+    "/host/adb",
+    [],
+    { timeoutMs: 100, maxOutputBytes: 2048 },
+    undefined,
+  );
+  if (result.ok) throw new Error("Expected a refused command");
+  return result.error;
+};
+
 it("classifies the complete diagnostic before shortening its displayed reason", async () => {
   const localPath = `/host/${"directory/".repeat(60)}payload.bin`;
   const stderr = `adb: error: cannot create '${localPath}': Permission denied`;
@@ -52,6 +78,119 @@ it("classifies the complete diagnostic before shortening its displayed reason", 
       path: localPath,
       reason: stderr.slice(0, 512),
     },
+  });
+});
+
+it("attributes a quoted remote pull refusal to the addressed file", async () => {
+  const remote = "/remote/report.bin";
+  const stderr = `adb: error: failed to open '${remote}': Permission denied`;
+  const error = await refusedCapture(
+    "pull_adb_file",
+    {
+      device: "emulator-5554",
+      path: remote,
+      localPath: "/host/out/report.bin",
+    },
+    stderr,
+  );
+  expect(error).toMatchObject({
+    _tag: "AnalysisUnsupportedTargetError",
+    operation: "pull_adb_file",
+    path: remote,
+    reason: stderr,
+  });
+  expect(error.message).toContain(`at ${remote}:`);
+});
+
+it("attributes a local pull destination refusal to the host operand", async () => {
+  const localPath = "/host/out/report.bin";
+  const stderr = `adb: error: failed to create file '${localPath}': Permission denied`;
+  const error = await refusedCapture(
+    "pull_adb_file",
+    {
+      device: "emulator-5554",
+      path: "/remote/report.bin",
+      localPath,
+    },
+    stderr,
+  );
+  expect(error).toMatchObject({
+    _tag: "AnalysisUnsupportedTargetError",
+    operation: "pull_adb_file",
+    path: localPath,
+    reason: stderr,
+  });
+  expect(error.message).toContain(`at ${localPath}:`);
+});
+
+it("keeps the device identity when a pull refusal names both operands", async () => {
+  const error = await refusedCapture(
+    "pull_adb_file",
+    {
+      device: "emulator-5554",
+      path: "/remote/report.bin",
+      localPath: "/host/out/report.bin",
+    },
+    "adb: error: failed to copy '/remote/report.bin' to '/host/out/report.bin': Permission denied",
+  );
+  expect(error).toMatchObject({
+    _tag: "AnalysisUnsupportedTargetError",
+    path: "emulator-5554",
+  });
+});
+
+it("keeps one file identity when pull operands share a path", async () => {
+  const shared = "/host/out/report.bin";
+  const error = await refusedCapture(
+    "pull_adb_file",
+    { device: "emulator-5554", path: shared, localPath: shared },
+    `adb: error: cannot stat remote object '${shared}': No such file or directory`,
+  );
+  expect(error).toMatchObject({
+    _tag: "AnalysisUnsupportedTargetError",
+    path: shared,
+  });
+});
+
+it("does not match a local operand as a prefix of the refused remote path", async () => {
+  const remote = "/data/local/tmp/report.bin";
+  const error = await refusedCapture(
+    "pull_adb_file",
+    { device: "emulator-5554", path: remote, localPath: "/data" },
+    `adb: error: failed to open '${remote}': Permission denied`,
+  );
+  expect(error).toMatchObject({
+    _tag: "AnalysisUnsupportedTargetError",
+    path: remote,
+  });
+});
+
+it("keeps the device identity for device-state refusals with a file operand", async () => {
+  const error = await refusedCapture(
+    "pull_adb_file",
+    {
+      device: "emulator-5554",
+      path: "/remote/report.bin",
+      localPath: "/host/out/report.bin",
+    },
+    "error: device offline",
+  );
+  expect(error).toMatchObject({
+    _tag: "AnalysisUnsupportedTargetError",
+    path: "emulator-5554",
+    reason: "error: device offline",
+  });
+});
+
+it("keeps the shared target when the command has no file operand", async () => {
+  const error = await refusedCapture(
+    "inspect_adb_device",
+    { device: "device" },
+    "adb: error: failed to stat remote object '/remote/report.bin': No such file or directory",
+  );
+  expect(error).toMatchObject({
+    _tag: "AnalysisUnsupportedTargetError",
+    path: "device",
   });
 });
 

@@ -106,3 +106,70 @@ it("keeps sibling literals when a later data property replaces the setter", () =
     ]),
   });
 });
+
+it("keeps array element members unknown after a write through an element setter", () => {
+  expect(
+    returned(`
+      export function observe() {
+        const state = { list: [{ value: 1, set update(next) { this.value = next; } }] };
+        state.list[0].update = 2;
+        return state.list[0].value;
+      }
+    `),
+  ).toMatchObject({ status: "unknown" });
+});
+
+it("keeps array element object unknown after a write through an element setter", () => {
+  expect(
+    returned(`
+      export function observe() {
+        const state = { list: [{ value: 1, set update(next) { this.value = next; } }] };
+        state.list[0].update = 2;
+        return state.list[0];
+      }
+    `),
+  ).toMatchObject({ status: "unknown" });
+});
+
+it("keeps direct array element members unknown after a write through an element setter", () => {
+  expect(
+    returned(`
+      export function observe() {
+        const arr = [{ value: 1, set update(next) { this.value = next; } }];
+        arr[0].update = 2;
+        return { value: arr[0].value };
+      }
+    `),
+  ).toMatchObject({
+    status: "object",
+    properties: expect.arrayContaining([
+      expect.objectContaining({
+        name: "value",
+        value: expect.objectContaining({ status: "unknown" }),
+      }),
+    ]),
+  });
+});
+
+it("keeps sibling literals when array element property written is an ordinary data property", () => {
+  expect(
+    returned(`
+      export function observe() {
+        const state = { list: [{ value: 1, update: 0 }] };
+        state.list[0].update = 2;
+        return state.list[0].value;
+      }
+    `),
+  ).toMatchObject({ status: "literal", value: 1 });
+});
+
+it("keeps sibling literals when an array element setter is present but unassigned", () => {
+  expect(
+    returned(`
+      export function observe() {
+        const state = { list: [{ value: 1, set update(next) { this.value = next; } }] };
+        return state.list[0].value;
+      }
+    `),
+  ).toMatchObject({ status: "literal", value: 1 });
+});

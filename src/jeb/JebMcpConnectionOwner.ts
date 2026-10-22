@@ -18,23 +18,24 @@ export class JebMcpPhysicalFailure extends Error {
   }
 }
 
-/** Acquisition failed while its exact connection still has pending cleanup. */
-export class JebMcpAcquisitionCleanupFailure extends ProviderCleanupError {
+/** An operation failed while its exact connection still has pending cleanup. */
+export class JebMcpCleanupFailure extends ProviderCleanupError {
   constructor(
     readonly primaryFailure: unknown,
     readonly cleanupFailure: ProviderCleanupError,
+    operation = "jeb_mcp_catalog",
   ) {
     super(
       "jeb",
       cleanupFailure.cleanupResources,
       {
-        reason: "JEB MCP acquisition and cleanup failed",
+        reason: "JEB MCP operation and cleanup failed",
       },
       {
-        operation: "jeb_mcp_catalog",
+        operation,
         cause: new AggregateError(
           [primaryFailure, cleanupFailure],
-          "JEB MCP acquisition and cleanup failed",
+          "JEB MCP operation and cleanup failed",
           { cause: primaryFailure },
         ),
       },
@@ -55,6 +56,9 @@ export class JebMcpConnectionOwner {
     | SharedStartupAttempt<Result<readonly string[], unknown>>
     | undefined;
   acquisitionFailure: { readonly cause: unknown } | undefined;
+  invalidation:
+    | { readonly failure: Promise<unknown>; settled: boolean }
+    | undefined;
   readonly #clientResource: string;
   readonly #transportResource: string;
   readonly #lease: AnalysisCleanupLease;

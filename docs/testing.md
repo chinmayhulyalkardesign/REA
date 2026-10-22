@@ -779,6 +779,15 @@ prove behavior on the verified Ghidra 12.1.4 and JDK 21 build.
 | `npm run verify:ghidra:cross-format`       | Any supported Ghidra host; also analyzes AArch64 ELF, x86-64 PE, and x86-64 Mach-O                              | `clang`, LLD, and `lld-link` in addition to host-lane prerequisites |
 | `npm run verify:ghidra:windows`            | Controlled Windows x64 with native x86-64 PE; `-- --x86` selects native x86 PE                                  | Ghidra 12.1.4, full JDK 21, and the matching native artifact        |
 
+`npm run verify:call-path-goals -- ghidra` and
+`npm run verify:call-path-goals -- hopper` compile a small owned shared library
+and exercise `trace_call_path` through stdio MCP. They verify a three-call path,
+an unrelated export, an indirect-only caller, complete backward roots, and
+single-goal compatibility, symbol selectors, and forward traversal. Use each
+provider's normal installation settings;
+the fixture is analyzed without executing it. The verifier closes the provider
+and checks owned process/session cleanup before succeeding.
+
 The optional Swift lane compiles a source-owned fixture and checks modern and
 provider-demangled procedure names through real stdio MCP, with and without the
 dSYM companion. It checks unfiltered, structs, and literal-name filters,

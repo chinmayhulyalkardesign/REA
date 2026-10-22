@@ -298,11 +298,34 @@ Windows, `~/.hermes` elsewhere — including any `HERMES_DATA_DIR_SUFFIX`. Herme
 connects an entry unless `enabled` is false, so setup states `enabled: true`.
 
 Hermes personal skills install under the active Hermes home's `skills` directory.
-Setup, doctor and uninstall follow the root's `active_profile` selection, as
-plain Hermes CLI commands do. An explicit `HERMES_HOME` pointing to
-`profiles/<name>` selects that named profile directly. An invalid, missing or
-deleted sticky profile is reported instead of writing into the default home;
-repair the profile or run `hermes profile use default` before retrying.
+Setup, doctor and uninstall follow the same sticky-profile lookup as plain
+Hermes CLI commands. A custom `HERMES_HOME` outside the platform default home
+reads its own `active_profile`. An existing override directory physically inside
+the default home reads the default home's `active_profile` instead. In both cases,
+a selected name is resolved under the configured `HERMES_HOME`.
+
+For example, with `HERMES_HOME=~/.hermes/sub` and `~/.hermes/active_profile` set
+to `coder`, setup selects `~/.hermes/sub/profiles/coder/config.yaml` and that
+profile's skills directory. It does not read `~/.hermes/sub/active_profile`.
+Without an outer named selection, this override uses `~/.hermes/sub/config.yaml`.
+Use a home outside the platform default tree for an independent sticky selection.
+
+Before setup, create an override directory whose path includes a symlink,
+junction, or another prefix that resolves to a different spelling. When the
+override does not exist, REA falls back to its lexical spelling for containment.
+This can miss physical containment — for example, beneath a symlinked default
+home or `HOME`/`USERPROFILE`/`LOCALAPPDATA` ancestor — ignoring the outer selection
+and planning the override root's configuration. It can also falsely assume
+containment: if `~/.hermes/link` points outside the default home,
+`HERMES_HOME=~/.hermes/link/new` can read the outer `active_profile` and reject a
+missing selected profile until `new` exists. Once the override directory exists,
+REA checks its physical location. Inspect setup's previewed destinations before
+applying changes.
+
+An explicit `HERMES_HOME` pointing to `profiles/<name>` selects that named
+profile directly, bypassing sticky selection. An invalid, missing or deleted
+sticky profile is reported instead of writing into the default home; repair the
+profile or run `hermes profile use default` before retrying.
 REA follows `HERMES_HOME` whitespace trimming, environment-variable expansion,
 and home expansion before resolving that profile. Setup previews the resolved
 configuration and skill destinations; doctor and uninstall use those same paths.

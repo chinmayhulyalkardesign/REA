@@ -251,6 +251,14 @@ describe("enhanced MCP tools", () => {
         .sort(),
     ).toEqual(ENHANCED_TOOL_CONTRACTS.map(({ name }) => name).sort());
     expect(listed.tools.map(({ name }) => name)).not.toContain("open_binary");
+
+    const traceFeature = listed.tools.find(
+      ({ name }) => name === "trace_feature",
+    );
+    expect(traceFeature?.description).toContain(
+      "matches, references, truncation status, and residual unknowns",
+    );
+    expect(traceFeature?.description).not.toContain("operation count");
   });
 
   // oxlint-disable-next-line max-lines-per-function -- one exhaustive registration test guards the public tool catalog.

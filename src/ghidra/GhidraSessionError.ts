@@ -37,6 +37,7 @@ export interface GhidraSessionErrorOptions extends ErrorOptions {
   readonly cancellation?: { readonly reason: unknown };
   readonly partialObservation?: AnalysisPartialObservation;
   readonly timeoutMs?: number;
+  readonly elapsedMs?: number;
   readonly remoteCode?: string;
   readonly cleanupFailure?: AnalysisError;
 }
@@ -45,6 +46,7 @@ export interface GhidraSessionErrorOptions extends ErrorOptions {
 export class GhidraSessionError extends Error {
   readonly diagnostics: Readonly<Record<string, JsonValue>>;
   readonly timeoutMs: number | undefined;
+  readonly elapsedMs: number | undefined;
   readonly remoteCode: string | undefined;
   readonly cleanupFailure: AnalysisError | undefined;
   readonly cancellation: { readonly reason: unknown } | undefined;
@@ -60,6 +62,7 @@ export class GhidraSessionError extends Error {
     this.name = "GhidraSessionError";
     this.diagnostics = structuredClone(diagnostics);
     this.timeoutMs = options.timeoutMs;
+    this.elapsedMs = options.elapsedMs;
     this.remoteCode = options.remoteCode;
     this.cleanupFailure = options.cleanupFailure;
     this.cancellation = options.cancellation;
@@ -113,6 +116,7 @@ export class GhidraSessionError extends Error {
         ? {}
         : { cancellation: this.cancellation }),
       ...(this.timeoutMs === undefined ? {} : { timeoutMs: this.timeoutMs }),
+      ...(this.elapsedMs === undefined ? {} : { elapsedMs: this.elapsedMs }),
       ...(this.remoteCode === undefined ? {} : { remoteCode: this.remoteCode }),
       ...(cleanupFailure === undefined ? {} : { cleanupFailure }),
       ...(partialObservation === undefined ? {} : { partialObservation }),
@@ -127,6 +131,7 @@ const createGhidraSessionError = (failure: {
   readonly diagnostics: Readonly<Record<string, JsonValue>>;
   readonly cause?: unknown;
   readonly timeoutMs?: number;
+  readonly elapsedMs?: number;
   readonly remoteCode?: string;
   readonly cancellation?: { readonly reason: unknown };
   readonly redact: (value: string, incomplete?: boolean) => string;
@@ -153,6 +158,9 @@ const createGhidraSessionError = (failure: {
       ...(failure.timeoutMs === undefined
         ? {}
         : { timeoutMs: failure.timeoutMs }),
+      ...(failure.elapsedMs === undefined
+        ? {}
+        : { elapsedMs: failure.elapsedMs }),
       ...(failure.remoteCode === undefined
         ? {}
         : { remoteCode: failure.remoteCode }),
@@ -171,7 +179,7 @@ export const bindGhidraSessionFailure =
     cause?: unknown,
     options: Pick<
       GhidraSessionErrorOptions,
-      "timeoutMs" | "remoteCode" | "cancellation"
+      "timeoutMs" | "elapsedMs" | "remoteCode" | "cancellation"
     > = {},
   ): GhidraSessionError => {
     const failure = createGhidraSessionError({

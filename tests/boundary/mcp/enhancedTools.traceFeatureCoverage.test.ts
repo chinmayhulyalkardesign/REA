@@ -266,4 +266,30 @@ describe("trace_feature reference coverage", () => {
     expect(result.ok).toBe(false);
     expect(calls.filter((call) => call.startsWith("xrefs:"))).toEqual([]);
   });
+
+  it("advertises only result members the output schema declares", async () => {
+    const client = await connect(provider());
+    const { tools } = await client.listTools();
+    const tool = tools.find(({ name }) => name === "trace_feature");
+    const schema = tool?.outputSchema as
+      | {
+          properties: { normalized_result: { $ref: string } };
+          $defs: Record<string, { properties?: Record<string, unknown> }>;
+        }
+      | undefined;
+    const result =
+      schema?.$defs[
+        schema.properties.normalized_result.$ref.replace("#/$defs/", "")
+      ];
+
+    expect(tool?.description).not.toMatch(/count/i);
+    expect(Object.keys(result?.properties ?? {})).toEqual([
+      "query",
+      "search_mode",
+      "matches",
+      "references",
+      "truncated",
+      "residual_unknowns",
+    ]);
+  });
 });

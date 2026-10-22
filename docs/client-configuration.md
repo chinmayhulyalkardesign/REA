@@ -273,6 +273,58 @@ These values are client-side deadlines, so increase them in `~/.codex/config.tom
 workload needs more time. Devin honors `XDG_CONFIG_HOME` for its
 `devin/mcp_config.json` on non-Windows systems.
 
+### Codex with Moonshot models
+
+Codex can use a Moonshot model such as `kimi-k3` through a custom provider or
+gateway. The model's schema limits still apply to every advertised tool, even
+when a greeting does not call one. A successful first turn does not establish
+compatibility: if MCP startup finishes between turns, a later request can be
+the first to include REA's tools.
+
+An older REA input advertisement can produce this error:
+
+```text
+parameters is not a valid moonshot flavored json schema
+At path '***.steps': detected infinite recursion without termination condition
+```
+
+In a reproduction through a Responses-compatible gateway, the shared input
+schema for `capture_native_ui_scenario` from a cached package reporting 6.3.0
+failed with that error; expanding its acyclic local references succeeded.
+The error alone does not prove that a schema is recursive. REA 6.7.0 already
+advertises that input without local references and passed the same request.
+Upgrading alone can still leave `schema exceeds maximum allowed size` for
+larger full-profile inputs such as `compare_web_captures`; its compact
+advertisement passed the same gateway/model check
+([#5160](https://github.com/morluto/rea/issues/5160)). These checks covered the
+individual advertised schemas, not model-driven tool execution or every
+gateway.
+
+Back up the active Codex `config.toml`, refresh the package selected by the
+actual REA command, and set the compact profile in that registration. For
+example, merge these fields into the existing entry, preserving provider
+settings and caller-selected timeouts:
+
+```toml
+[mcp_servers.rea]
+command = "npx"
+args = ["-y", "rea-agents@latest", "mcp"]
+
+[mcp_servers.rea.env]
+REA_MCP_INPUT_SCHEMA_PROFILE = "compact"
+```
+
+Use `~/.codex/config.toml`, or the file under the selected `CODEX_HOME`.
+Update existing TOML tables rather than adding duplicate headers. If the
+registration uses a pinned package or a direct executable, update and verify
+that selected version; installing a newer global `rea` does not change the
+command Codex launches. Restart Codex so it reconnects to the server and
+reloads the schema catalog, then test another turn after REA is ready.
+The profile changes the advertised input presentation; canonical server-side
+validation still applies. See the
+[compact input schema profile](mcp-contracts.md#compact-input-schema-profile)
+for its limits.
+
 ## OMP
 
 For OMP, setup writes a `type: "stdio"` entry to the user-level

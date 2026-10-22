@@ -1000,12 +1000,11 @@ failures for such entries name this cause and the operation to rerun with
 ## Schema advertisement
 
 Advertised input and output schemas contain no reachable recursive references.
-Schemas share repeated definitions through schema-local references while
-preserving complete nested fields and validation rules. Input schemas whose
-shared definitions would exhaust a client's declaration-rendering reference
-budget (Pi 1.1.0 code-mode shares 32 reference expansions across an input and
-renders every later reference as `unknown`) are re-projected without shared
-definitions, so every advertised field renders with complete structure.
+Input schemas inline reused definitions so their nested fields are
+self-contained, including for clients that do not resolve local references.
+Output schemas continue to share repeated definitions through schema-local
+references. Canonical validation remains responsible for accepting or rejecting
+tool calls; input presentation can relax constraints as described below.
 Input properties retain their descriptions and literal examples.
 
 When a host forwards input schemas to the model, their examples consume context.
@@ -1071,6 +1070,10 @@ the selected gateway and model. That report used ZCode through a gateway to a
 Kimi-K3 backend, not the WorkBuddy MCP client. Set the profile on REA's
 registration in the actual MCP host; the host's name alone does not identify
 the downstream model or its schema constraints.
+For Codex with a Moonshot model, see the
+[Codex recovery configuration](client-configuration.md#codex-with-moonshot-models)
+for both older shared-schema errors and the size limit that can remain after
+upgrading.
 
 The compact profile renders the same tool set, output schemas, annotations,
 and canonical server-side validation. It changes only the advertised input

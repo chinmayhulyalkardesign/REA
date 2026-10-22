@@ -11,11 +11,12 @@ import {
 import { unwrapJavaScriptExpression } from "./javascriptAstValues.js";
 import type { JavaScriptStaticPathIntrinsicQuery } from "./javascriptStaticAnalysisHelpers.js";
 
-/** Prove Node's path resolver before applying its argument-selection semantics. */
+/** Prove Node's path.resolve / path.join before applying path-call semantics. */
 export const createStaticNodePathResolveQuery = (
   index: JavaScriptBindingIndex,
 ): JavaScriptStaticPathIntrinsicQuery => {
   const facts = new WeakMap<t.Node, boolean>();
+  const joinFacts = new WeakMap<t.Node, boolean>();
   const nativeMethod = (
     callee: t.Node,
     method: string,
@@ -63,6 +64,13 @@ export const createStaticNodePathResolveQuery = (
             callee.arguments.length === 1 &&
             nativeMethod(callee.callee, "dirname", ["path", "path/posix"]) &&
             sourceFile(callee.arguments[0]);
+    }
+    if (fact === "join") {
+      const cached = joinFacts.get(callee);
+      if (cached !== undefined) return cached;
+      const proven = nativeMethod(callee, "join", ["path", "path/posix"]);
+      joinFacts.set(callee, proven);
+      return proven;
     }
     const cached = facts.get(callee);
     if (cached !== undefined) return cached;

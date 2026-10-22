@@ -84,6 +84,10 @@ const unknownExpressions = [
   'path.win32.resolve(__dirname, "preload.js")',
   'win32.resolve("/app", "preload.js")',
   'resolve("/app", "preload.js")',
+  'settings.resolve("a", "/b")',
+  'Promise.resolve("/a")',
+  '["a","b"].join("/")',
+  'join("sub", "preload.js")',
   '__dirname + "preload.js"',
   'path.dirname(__filename) + "preload.js"',
   'new URL("./pre%2Fload.js", import.meta.url)',
@@ -253,7 +257,7 @@ describe("inert JavaScript path resolution", () => {
       "preload.js",
       "filesystem-expression",
     ],
-    ['join("sub", "preload.js")', "sub/preload.js", "module-specifier"],
+    ['path.join("sub", "preload.js")', "sub/preload.js", "module-specifier"],
     ["path.join(__dirname)", ".", "filesystem-expression"],
   ] as const)("preserves join behavior in %s", (expression, path, context) => {
     assertPathProjection(expression, path, context);
@@ -330,6 +334,91 @@ describe("inert JavaScript path resolution", () => {
     expect(staticPath(parsePathExpression(expression))).toBeUndefined(),
   );
 });
+
+it("does not treat unrelated join/resolve calls as filesystem paths", () => {
+  for (const expression of [
+    'settings.resolve("a", "/b")',
+    '["a","b"].join("/")',
+    'Promise.resolve("/a")',
+    'join("sub", "preload.js")',
+    'custom.join(__dirname, "preload.js")',
+  ]) {
+    const { analysis } = analyzePathConsumers(expression);
+    expect(analysis.role_paths).toEqual([]);
+    expect(analysis.electron.browser_windows).toEqual([
+      expect.objectContaining({
+        preload_path: null,
+        preload_resolution_context: null,
+      }),
+    ]);
+    expect(analysis.electron.utility_processes).toEqual([
+      expect.objectContaining({
+        module_path: null,
+        module_resolution_context: null,
+      }),
+    ]);
+  }
+});
+
+it.each([
+  {
+    imports: 'import { join } from "node:path";',
+    expression: 'join(__dirname, "preload.js")',
+  },
+  {
+    imports: 'import { join as pathJoin } from "node:path";',
+    expression: 'pathJoin(__dirname, "preload.js")',
+  },
+  {
+    imports: 'import * as p from "node:path";',
+    expression: 'p.join(__dirname, "preload.js")',
+  },
+  {
+    imports: 'import path from "node:path";',
+    expression: 'path.posix.join(__dirname, "preload.js")',
+  },
+])(
+  "resolves filesystem paths through bound Node path join in $expression",
+  ({ imports, expression }) => {
+    const property = `preload: ${expression}`;
+    const genericPrefix = `${imports} const options = { `;
+    const windowPrefix = "new BrowserWindow({ webPreferences: { ";
+    const windowExpression = `${windowPrefix}${property} } })`;
+    const utilityExpression = `utilityProcess.fork(${expression})`;
+    const analysis = analyzeJavaScriptStaticSource(
+      `${genericPrefix}${property} }; const { BrowserWindow, utilityProcess } = require("electron");\n${windowExpression};\n${utilityExpression};`,
+    );
+    expect(analysis.parse_status).toBe("complete");
+    expect(analysis.parse_error_count).toBe(0);
+    expect(analysis.role_paths).toEqual(
+      (
+        [
+          [1, genericPrefix.length],
+          [2, windowPrefix.length],
+        ] as const
+      ).map(([line, column]) => ({
+        role: "preload",
+        path: "preload.js",
+        resolution_context: "filesystem-expression",
+        mechanism: "property:preload",
+        module_key: null,
+        location: lineRange(line, column, column + property.length),
+      })),
+    );
+    expect(analysis.electron.browser_windows).toEqual([
+      expect.objectContaining({
+        preload_path: "preload.js",
+        preload_resolution_context: "filesystem-expression",
+      }),
+    ]);
+    expect(analysis.electron.utility_processes).toEqual([
+      expect.objectContaining({
+        module_path: "preload.js",
+        module_resolution_context: "filesystem-expression",
+      }),
+    ]);
+  },
+);
 
 it.each([
   "file:///app/preload%20file.js",
@@ -419,7 +508,7 @@ const assertPathProjection = (
   // This syntax matrix supplies identity explicitly; full-source cases prove it.
   const nodePathResolve = (
     callee: import("@babel/types").Node,
-    fact?: "source-directory",
+    fact?: "source-directory" | "join",
   ) => {
     if (fact === "source-directory") {
       const name = calleeName(
@@ -430,6 +519,11 @@ const assertPathProjection = (
       );
     }
     const name = calleeName(callee);
+    if (fact === "join") {
+      return (
+        (name.endsWith(".join") || name === "join") && !name.includes("win32")
+      );
+    }
     return name.endsWith(".resolve") && !name.includes("win32");
   };
   expect(staticPath(node, nodePathResolve)).toBe(path);

@@ -32,6 +32,10 @@ import {
 
 const OPERATION = "capture_browser_scenario" as const;
 
+// Provider-owned liveness limit for the start navigation: waiting for `load`
+// has no caller-supplied deadline, so the boundary supplies one instead.
+export const PLAYWRIGHT_SCENARIO_START_NAVIGATION_TIMEOUT_MS = 60_000;
+
 const throwIfScenarioCancelled = (signal: AbortSignal | undefined): void => {
   if (signal?.aborted === true)
     throw new BrowserObservationError(OPERATION, "cancelled", {
@@ -221,7 +225,7 @@ export class PlaywrightScenarioSession implements BrowserScenarioSessionPort {
             waitUntil: "load",
             timeout: 0,
           }),
-        undefined,
+        PLAYWRIGHT_SCENARIO_START_NAVIGATION_TIMEOUT_MS,
         options.signal,
       );
       await withPlaywrightExecutionBoundary(

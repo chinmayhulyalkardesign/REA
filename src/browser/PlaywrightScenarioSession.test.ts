@@ -100,7 +100,10 @@ vi.mock("./PlaywrightScenarioEvents.js", () => ({
 }));
 
 import { browserScenarioSchema } from "../domain/browserScenario.js";
-import { PlaywrightScenarioSession } from "./PlaywrightScenarioSession.js";
+import {
+  PLAYWRIGHT_SCENARIO_START_NAVIGATION_TIMEOUT_MS,
+  PlaywrightScenarioSession,
+} from "./PlaywrightScenarioSession.js";
 
 const scenario = browserScenarioSchema.parse({
   browser: { mode: "launch", executable_path: process.execPath },
@@ -1451,5 +1454,25 @@ it("retains late opening failure cleanup after cancellation until the exact prof
     denied = false;
     finishOpening();
     await provider.close();
+  }
+});
+
+it("bounds a never-settling start navigation with the provider-owned deadline", async () => {
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "performance"] });
+  try {
+    const { page, cleanup } = fixture();
+    page.goto.mockImplementation(() => new Promise<undefined>(() => undefined));
+    const pending = PlaywrightScenarioSession.open(scenario, {}, {});
+    const assertion = expect(pending).rejects.toMatchObject({
+      _tag: "AnalysisTimeoutError",
+      timeoutMs: PLAYWRIGHT_SCENARIO_START_NAVIGATION_TIMEOUT_MS,
+    });
+    await vi.advanceTimersByTimeAsync(
+      PLAYWRIGHT_SCENARIO_START_NAVIGATION_TIMEOUT_MS,
+    );
+    await assertion;
+    expect(cleanup.close).toHaveBeenCalledTimes(1);
+  } finally {
+    vi.useRealTimers();
   }
 });

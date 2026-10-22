@@ -266,3 +266,19 @@ native artifact. Hosted Windows CI verifies native controls and packaged
 startup separately from real Ghidra acceptance. Broader hostile-target,
 concurrently mutable-path, extraction, and IPC-security claims require their
 own acceptance and are not implied by this P0 result.
+
+
+---
+
+###  ELF Targets on Windows (e.g., Android `libapp.so`)
+
+The Windows P0 boundary currently **does not support ELF formats**. If you attempt to analyze an ELF file on Windows, you will receive a `target_format_unsupported` error.
+
+**Recommended Workaround: Use WSL2**
+To analyze ELF targets on a Windows machine, we recommend running Ghidra through Windows Subsystem for Linux (WSL2):
+
+1. Install WSL2 and an Ubuntu distribution from the Microsoft Store.
+2. Install Ghidra and JDK 21 inside your WSL2 environment.
+3. Set your `GHIDRA_INSTALL_DIR` within WSL2 and run your analysis tools from the WSL2 terminal.
+
+This ensures full compatibility with ELF binaries while maintaining the strict security boundaries of the Windows P0 model.

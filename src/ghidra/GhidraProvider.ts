@@ -619,7 +619,7 @@ const inspectWindowsP0TargetSupport = (
   // The raw 6502 lane uses the same immutable snapshot and native ownership boundary.
   if (target.format === "raw-binary" && target.architecture === "6502")
     return { status: "supported", code: null, reason: null, diagnostics };
-  if (target.format !== "pe")
+ if (target.format !== "pe")
     return {
       status: "unsupported",
       code: "target_format_unsupported",

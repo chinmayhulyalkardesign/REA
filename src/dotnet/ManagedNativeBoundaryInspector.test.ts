@@ -11,6 +11,35 @@ import {
   managedPeFixtureTarget,
 } from "./ManagedPe.fixture.js";
 
+describe("managed native boundary issue volume", () => {
+  it("retains every issue of a metadata table too large to spread into call arguments", () => {
+    // Appending 140,000 inventory issues as call arguments overflows the stack.
+    const bytes = buildManagedPeFixture({
+      pinvoke: {},
+      customAttributeRowCount: 140_000,
+      customAttributeTypeRaw: 0,
+    });
+    const result = inspectManagedNativeBoundariesBytes(
+      bytes,
+      managedPeFixtureTarget(bytes),
+    );
+
+    expect(result.pinvoke_imports).toHaveLength(1);
+    expect(result.coverage.state).toBe("partial");
+    const attributeIssues = result.coverage.issues.filter(({ scope }) =>
+      scope.startsWith("metadata.CustomAttribute:"),
+    );
+    expect(attributeIssues).toHaveLength(140_000);
+    expect(new Set(attributeIssues.map(({ scope }) => scope)).size).toBe(
+      140_000,
+    );
+    expect(attributeIssues.every(({ offset }) => offset !== null)).toBe(true);
+    expect(new Set(attributeIssues.map(({ offset }) => offset)).size).toBe(
+      140_000,
+    );
+  }, 60_000);
+});
+
 describe("managed native boundaries", () => {
   it("inspects managed/native PInvoke declarations without verifying native exports", () => {
     const bytes = buildManagedPeFixture({

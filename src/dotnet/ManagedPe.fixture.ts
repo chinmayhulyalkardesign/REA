@@ -568,14 +568,16 @@ const tablesStream = (
   for (let index = 0; index <= 44; index += 1) {
     const tableRows = rows.get(index);
     if (tableRows === undefined) continue;
-    data.push(...tableRows);
+    for (const row of tableRows) data.push(row);
   }
-  return Buffer.concat([
-    header,
-    ...counts,
-    ...(extraData === undefined ? [] : [u32(extraData)]),
-    ...data,
-  ]);
+  // A very large table must not become call arguments.
+  return Buffer.concat(
+    [
+      header,
+      ...counts,
+      ...(extraData === undefined ? [] : [u32(extraData)]),
+    ].concat(data),
+  );
 };
 
 interface FixtureMetadataRowContext {

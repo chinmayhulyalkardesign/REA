@@ -15,7 +15,7 @@ import type { EnvironmentToolDefinition } from "./environmentTools.js";
 export const ENVIRONMENT_EXPORT_OPERATION = "environment-export";
 
 /** The image the exported Dockerfile builds from; the agentenv runner builds it with Docker. */
-export const BUNDLE_BASE_IMAGE = "node:24.18.0-bookworm-slim";
+export const BUNDLE_BASE_IMAGE = "node:24.22.1-bookworm-slim";
 
 /** The port the agentenv framework maps for an MCP server env; it sets the host but not the port. */
 export const BUNDLE_MCP_PORT = 18765;

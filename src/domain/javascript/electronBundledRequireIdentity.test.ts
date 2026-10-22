@@ -70,6 +70,7 @@ describe("Electron identity through Webpack externals", () => {
     ["delete", "delete n.n;"],
     ["a destructuring write", "({g:n.n}={g:e=>()=>0});"],
     ["an unknown key", "n[key]=e=>()=>0;"],
+    ["a loader alias", "const copy=n;copy.n=e=>()=>({BrowserWindow:class{}});"],
   ])(
     "does not infer Electron after a getter write through %s",
     (_name, write) => {
@@ -80,7 +81,7 @@ describe("Electron identity through Webpack externals", () => {
     },
   );
 
-  it("keeps the getter after a reflective write to another loader key", () => {
+  it("keeps the getter after a reflective or alias write to another loader key", () => {
     expect(
       electronOf(
         bootstrap(
@@ -88,6 +89,11 @@ describe("Electron identity through Webpack externals", () => {
           GETTER_CONSUMER,
           'Object.defineProperty(n,"d",{value:1});n(100);',
         ),
+      ).browser_windows,
+    ).toHaveLength(1);
+    expect(
+      electronOf(
+        bootstrap(EXTERNAL, GETTER_CONSUMER, "const copy=n;copy.d=1;n(100);"),
       ).browser_windows,
     ).toHaveLength(1);
   });
@@ -198,6 +204,22 @@ describe("Webpack externals with a tampered runtime", () => {
     [
       "a slot replaced through the runtime exposure",
       bootstrap(EXTERNAL, CONSUMER, "n.m=m;n.m[45840]=local;n(100);"),
+    ],
+    [
+      "a slot replaced through a constant identifier key",
+      bootstrap(
+        EXTERNAL,
+        CONSUMER,
+        "n.m=m;const key=45840;n.m[key]=local;n(100);",
+      ),
+    ],
+    [
+      "a slot replaced through a Number conversion key",
+      bootstrap(EXTERNAL, CONSUMER, 'n.m=m;n.m[Number("45840")]=local;n(100);'),
+    ],
+    [
+      "a slot replaced through an unknown computed key",
+      bootstrap(EXTERNAL, CONSUMER, "n.m=m;n.m[unknownKey()]=local;n(100);"),
     ],
     [
       "a cache entry planted before loading",

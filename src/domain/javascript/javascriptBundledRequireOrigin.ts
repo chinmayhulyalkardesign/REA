@@ -157,17 +157,11 @@ const canonicalWebpackInteropBindings = (
   completeSemanticSteps(
     collectJavaScriptIdentityWritesSteps(
       state.program,
-      (root, kind) => {
-        const node = unwrapJavaScriptExpression(root).node;
-        return kind === "member" &&
-          t.isIdentifier(node) &&
-          loaderBindingIds.has(
-            resolveSemanticBindingState(state, node, node.name)?.bindingId ??
-              "",
-          )
+      (root, kind) =>
+        kind === "member" &&
+        mayReferToLoaderBinding(root, loaderBindingIds, state)
           ? [["loader"]]
-          : [];
-      },
+          : [],
       interop.intrinsicInvocation,
       interop.staticString,
       interop.isFreshObject,
@@ -192,6 +186,25 @@ const canonicalWebpackInteropBindings = (
   )
     for (const bindingId of loaderBindingIds) proven.add(bindingId);
   return proven;
+};
+
+const mayReferToLoaderBinding = (
+  root: t.Node,
+  loaderBindingIds: ReadonlySet<string>,
+  state: JavaScriptSemanticAnalysisState,
+  visited = new Set<string>(),
+): boolean => {
+  const node = unwrapJavaScriptExpression(root).node;
+  if (!t.isIdentifier(node)) return false;
+  const binding = resolveSemanticBindingState(state, node, node.name);
+  if (binding === undefined || visited.has(binding.bindingId)) return false;
+  if (loaderBindingIds.has(binding.bindingId)) return true;
+  const next = new Set(visited).add(binding.bindingId);
+  return binding.initializers.some(
+    ({ node: initializer, projection }) =>
+      projection.length === 0 &&
+      mayReferToLoaderBinding(initializer, loaderBindingIds, state, next),
+  );
 };
 
 const isCanonicalGetter = (

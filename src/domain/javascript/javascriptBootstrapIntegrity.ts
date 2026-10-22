@@ -1,13 +1,18 @@
 import * as t from "@babel/types";
 
 import type { javascriptBootstrapAt } from "./javascriptBootstrap.js";
-import { semanticStaticPropertyKey } from "./javascriptAstValues.js";
 import {
+  semanticStaticPropertyKey,
+  unwrapJavaScriptExpression,
+} from "./javascriptAstValues.js";
+import {
+  isUnshadowedGlobal,
   resolveSemanticBindingState,
   semanticStableInitializer,
   type JavaScriptSemanticAnalysisState,
 } from "./javascriptSemanticState.js";
 import { traverseJavaScriptAst } from "./javascriptSemanticTraversal.js";
+import { evaluateSemanticExpression } from "./javascriptSemanticValues.js";
 import { argumentValue } from "./javascriptStaticAnalysisHelpers.js";
 
 type Bootstrap = NonNullable<ReturnType<typeof javascriptBootstrapAt>>;
@@ -452,7 +457,7 @@ const referencesAreContained = (
       const use: Use = { node, parent, ancestors, shape, loaderIds, state };
       if (role !== "loader") contained = containedUse(role, use);
       else if (exposedTableUse(use) === "escaped") contained = false;
-      else exposedSlotWrite(use, replacedKeys);
+      else if (!exposedSlotWrite(use, replacedKeys)) contained = false;
     },
   });
   return contained ? { replacedKeys } : undefined;
@@ -523,11 +528,11 @@ const exposedTableUse = (use: Use): "other" | "contained" | "escaped" => {
 };
 
 /**
- * `loader.m[key] = factory` or `delete loader.c[key]` replaces a literal slot.
- * Writes with runtime keys are chunk installation, which adds modules under
- * their own ids; they are not treated as replacing a declared slot.
+ * `loader.m[key] = factory` or `delete loader.c[key]` replaces a resolved slot.
+ * Writes with runtime keys are only contained when they match chunk
+ * installation (`for (k in chunk) loader.m[k] = chunk[k]`).
  */
-const exposedSlotWrite = (use: Use, replacedKeys: Set<string>): void => {
+const exposedSlotWrite = (use: Use, replacedKeys: Set<string>): boolean => {
   const { parent, ancestors } = use;
   const slot = ancestors.at(-2);
   const write = ancestors.at(-3);
@@ -545,12 +550,73 @@ const exposedSlotWrite = (use: Use, replacedKeys: Set<string>): void => {
       t.isUpdateExpression(write)
     )
   )
-    return;
-  const key = slot.computed
-    ? argumentValue(slot.property)
-    : semanticStaticPropertyKey(slot.property, false);
-  if (key !== undefined && key !== null) replacedKeys.add(key);
+    return true;
+  const key = slotPropertyKey(slot, use.state);
+  if (key !== undefined) {
+    replacedKeys.add(key);
+    return true;
+  }
+  return isChunkInstallWrite(parent, slot, write, ancestors);
 };
+
+const slotPropertyKey = (
+  slot: t.MemberExpression,
+  state: JavaScriptSemanticAnalysisState,
+): string | undefined => {
+  if (!slot.computed)
+    return semanticStaticPropertyKey(slot.property, false) ?? undefined;
+  const direct =
+    argumentValue(slot.property) ??
+    semanticStaticPropertyKey(slot.property, true) ??
+    undefined;
+  if (direct !== undefined) return direct;
+  const evaluated = evaluateSemanticExpression(slot.property, state);
+  if (
+    evaluated.status === "literal" &&
+    (typeof evaluated.value === "string" || typeof evaluated.value === "number")
+  )
+    return String(evaluated.value);
+  const expression = unwrapJavaScriptExpression(slot.property).node;
+  if (
+    t.isCallExpression(expression) &&
+    expression.arguments.length === 1 &&
+    t.isIdentifier(expression.callee) &&
+    (expression.callee.name === "Number" ||
+      expression.callee.name === "String") &&
+    isUnshadowedGlobal(expression.callee, state, expression.callee.name)
+  ) {
+    const firstArg = expression.arguments[0];
+    if (firstArg !== undefined && !t.isSpreadElement(firstArg)) {
+      const arg = evaluateSemanticExpression(firstArg, state);
+      if (
+        arg.status === "literal" &&
+        (typeof arg.value === "string" || typeof arg.value === "number")
+      ) {
+        const converted =
+          expression.callee.name === "Number"
+            ? Number(arg.value)
+            : String(arg.value);
+        if (typeof converted === "string" || Number.isFinite(converted))
+          return String(converted);
+      }
+    }
+  }
+  return undefined;
+};
+
+const isChunkInstallWrite = (
+  parent: t.MemberExpression,
+  slot: t.MemberExpression,
+  write: t.Node,
+  ancestors: readonly t.Node[],
+): boolean =>
+  semanticStaticPropertyKey(parent.property, parent.computed) === "m" &&
+  t.isAssignmentExpression(write, { operator: "=" }) &&
+  t.isIdentifier(slot.property) &&
+  t.isMemberExpression(write.right) &&
+  write.right.computed &&
+  t.isIdentifier(write.right.property, { name: slot.property.name }) &&
+  ancestors.some((ancestor) => t.isForInStatement(ancestor));
 
 const bindingOf = (
   state: JavaScriptSemanticAnalysisState,

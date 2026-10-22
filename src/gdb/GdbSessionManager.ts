@@ -517,6 +517,18 @@ interface GdbSession {
   recentRecordsTruncated: boolean;
 }
 
+const gdbConsoleUnavailable = (): AnalysisInputError =>
+  new AnalysisInputError("gdb_console", undefined, [
+    {
+      path: ["session_id"],
+      reason: "invalid_value",
+      message: "GDB session is unavailable or closed.",
+    },
+  ]);
+
+const gdbCloseUnavailable = (): AnalysisInputError =>
+  new AnalysisInputError("close_gdb_session");
+
 /** Owns persistent GDB/MI sessions independently from the active binary target. */
 export class GdbSessionManager {
   readonly #sessions = new Map<string, GdbSession>();
@@ -1143,23 +1155,23 @@ export class GdbSessionManager {
       session.exited ||
       session.protocolError !== undefined
     )
-      return err(
-        new AnalysisInputError("gdb_console", undefined, [
-          {
-            path: ["session_id"],
-            reason: "invalid_value",
-            message: "GDB session is unavailable or closed.",
-          },
-        ]),
-      );
+      return err(gdbConsoleUnavailable());
     if (signal?.aborted)
       return err(cancelledWithCallerReason("gdb_console", signal));
     try {
       const completed = await this.#serialize(
         session,
         async () => {
-          if (session.exited || session.protocolError !== undefined)
-            return err(new AnalysisInputError("gdb_console"));
+          // closeAll() marks the manager closing, and close() removes the
+          // session, while this command waits. The child exit event can land
+          // after stop, so exited alone does not show that close has started.
+          if (
+            this.#closing ||
+            this.#sessions.get(sessionId) !== session ||
+            session.exited ||
+            session.protocolError !== undefined
+          )
+            return err(gdbConsoleUnavailable());
           session.noInferiorVerified = false;
           session.knownInferiorIdentities.clear();
           if (commandMayChangeInferiorOutput(command))
@@ -1352,8 +1364,7 @@ export class GdbSessionManager {
     if (this.#closing)
       return err(new AnalysisCancelledError("close_gdb_session"));
     const session = this.#sessions.get(sessionId);
-    if (session === undefined)
-      return err(new AnalysisInputError("close_gdb_session"));
+    if (session === undefined) return err(gdbCloseUnavailable());
     if (session.exited) {
       const stopped = await this.#stopDebuggerOnly(session);
       if (stopped.status === "incomplete")
@@ -1371,6 +1382,9 @@ export class GdbSessionManager {
       return await this.#serialize(
         session,
         async () => {
+          // An earlier close can remove this session while this close waits.
+          if (this.#sessions.get(sessionId) !== session)
+            return err(gdbCloseUnavailable());
           if (session.exited) {
             const stopped = await this.#stopDebuggerOnly(session);
             if (stopped.status === "incomplete")

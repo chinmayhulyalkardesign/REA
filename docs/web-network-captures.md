@@ -257,8 +257,10 @@ not register or wrap the Fiddler MCP server.
 - `numeric_literals` preserve HAR number lexemes and native integer/float
   representations, including unsafe integers and non-finite native floats.
   Values that cannot be safely represented as JSON numbers are `null` in the
-  reported view. Unsafe standard HAR numeric fields fail schema validation;
-  unsafe extension numbers remain available through their sidecars.
+  reported view. Schema-valid HAR numbers are admitted even when they cannot
+  be published safely as JSON numbers; their exact lexemes remain in
+  `numeric_literals`. Standard numeric fields still must satisfy the pinned
+  schema, including integer requirements judged from the numeric lexeme.
 - `binary_fields` retain exposed bytes, base64 and SHA-256 independently of
   declared sizes. Valid HAR `content.encoding: "base64"` is decoded exactly;
   producer-decoded Unicode text, missing text and unknown encodings do not

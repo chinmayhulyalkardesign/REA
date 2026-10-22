@@ -1,5 +1,6 @@
 import { stat } from "node:fs/promises";
 import { basename, dirname, isAbsolute, resolve } from "node:path";
+import { absoluteCallerPath } from "../filesystem/callerPath.js";
 import type { BinaryTarget } from "../domain/binaryTargetTypes.js";
 import type { FileHandle } from "node:fs/promises";
 import type { z } from "zod";
@@ -51,8 +52,10 @@ export const resolveNativePlistSelection = async (
   requested: string | undefined,
 ): Promise<Result<NativePlistSelection, AnalysisError>> => {
   try {
+    // Keep `..` for the filesystem: after a directory symlink, lexical
+    // normalization would select a different plist.
     if (requested !== undefined && isAbsolute(requested))
-      return ok({ path: resolve(requested), origin: "selected" });
+      return ok({ path: absoluteCallerPath(requested), origin: "selected" });
     if (
       requested === undefined &&
       target.kind === "artifact" &&
@@ -65,7 +68,10 @@ export const resolveNativePlistSelection = async (
       ? source
       : (macOSBundleRoot(target.path) ?? dirname(target.path));
     if (requested !== undefined)
-      return ok({ path: resolve(root, requested), origin: "selected" });
+      return ok({
+        path: absoluteCallerPath(requested, { cwd: root }),
+        origin: "selected",
+      });
     return ok({
       path: target.bundleInfoPlist ?? resolve(root, "Contents/Info.plist"),
       origin: "default",

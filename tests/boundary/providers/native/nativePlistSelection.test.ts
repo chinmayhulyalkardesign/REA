@@ -1,4 +1,4 @@
-import { chmod, mkdir, writeFile } from "node:fs/promises";
+import { chmod, mkdir, readFile, symlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { expect, it, onTestFinished } from "vitest";
 import { NativeMacOSProvider } from "../../../../src/native/NativeMacOSProvider.js";
@@ -48,6 +48,31 @@ it("resolves selected paths and defaults without conflating intent and file read
     ok: true,
     value: { path: chosen, origin: "selected" },
   });
+});
+
+it("keeps .. after a directory symlink for the filesystem to resolve", async () => {
+  const root = await createTestTempDirectory("rea-plist-symlink-");
+  const bundle = join(root, "Fixture.app");
+  await mkdir(join(bundle, "Contents/MacOS"), { recursive: true });
+  await mkdir(join(bundle, "plists"));
+  const program = join(bundle, "Contents/MacOS/Fixture");
+  await writeFile(program, "fixture program");
+  await writeFile(join(bundle, "Info.plist"), "bundle root");
+  await writeFile(join(bundle, "plists/Info.plist"), "lexical");
+  await symlink("../Contents", join(bundle, "plists/contents"), "dir");
+  const target = nativeMachoTarget(program);
+  for (const requested of [
+    "plists/contents/../Info.plist",
+    `${bundle}/plists/contents/../Info.plist`,
+  ]) {
+    const selection = await resolveNativePlistSelection(target, requested);
+    if (!selection.ok) throw new Error("Expected a plist selection");
+    expect(selection.value).toEqual({
+      path: `${bundle}/plists/contents/../Info.plist`,
+      origin: "selected",
+    });
+    expect(await readFile(selection.value.path, "utf8")).toBe("bundle root");
+  }
 });
 
 it.each(["missing", "directory"] as const)(

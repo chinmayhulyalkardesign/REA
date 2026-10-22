@@ -307,6 +307,11 @@ export const createGhidraProviderClient = (input: {
       ? ghidraRawBinaryLanguage(target.architecture)
       : undefined;
   const targetLimitations = [
+    ...(target.format === "mach-o-universal"
+      ? [
+          `Ghidra imported only the ${target.architecture} slice of this universal Mach-O, copied from container offset ${target.universalSlice.offset} (${target.universalSlice.size} bytes). Ghidra file offsets are relative to that slice; add ${target.universalSlice.offset} for the universal file offset.`,
+        ]
+      : []),
     ...(target.format === "dos-mz"
       ? [
           "DOS MZ uses 16-bit x86 real mode with the Ghidra load segment 0x1000. Returned addresses are linear byte coordinates; they do not identify a unique segment:offset alias.",
@@ -395,6 +400,9 @@ export const createGhidraProviderClient = (input: {
         ? (target.sourcePath ?? target.path)
         : target.path,
     targetSha256: target.sha256,
+    ...(target.format === "mach-o-universal"
+      ? { universalSlice: target.universalSlice }
+      : {}),
     transport:
       installation.platform === "win32"
         ? "authenticated-loopback-tcp"

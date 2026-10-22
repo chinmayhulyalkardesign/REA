@@ -11,6 +11,7 @@ import {
   engineFixtureImage,
   buildElf64Image,
   REFERENCE_HASH,
+  renamedAotFixtureImage,
 } from "../../../src/flutter/FlutterBuild.fixture.js";
 import { snapshotSection } from "../../../src/flutter/FlutterBuild.fixture.js";
 import { FlutterBuildProvider } from "../../../src/flutter/FlutterBuildProvider.js";
@@ -605,6 +606,111 @@ it("inspects a full synthetic AOT image end to end", async () => {
   // All four symbols present, both data magics valid, pool under budget:
   // the honest answer for a complete payload is complete coverage.
   expect(value.coverage).toBe("complete");
+});
+
+// Dart SDK d36adbacaf renamed the exported symbols to _kDartSnapshotData and
+// _kDartSnapshotText and dropped kFullCore, so FullAOT is kind 2 there.
+it("inspects an AOT image in the renamed single-snapshot layout", async () => {
+  const apk = await buildApk("renamed.apk", [
+    { path: "lib/arm64-v8a/libapp.so", bytes: renamedAotFixtureImage() },
+  ]);
+  const result = await new FlutterBuildProvider().execute({
+    operation: "inspect_dart_aot",
+    input: { path: apk },
+  });
+  if (!result.ok) throw new Error(result.error.message);
+  const value = flutterResultSchemas.inspect_dart_aot.parse(
+    result.value.result,
+  );
+  expect(value.libapp.snapshot_hash).toBe(REFERENCE_HASH);
+  expect(value.libapp.snapshot_hash_sources).toBe(1);
+  expect(value.libapp.sections).toEqual([
+    expect.objectContaining({
+      name: "_kDartSnapshotData",
+      magic_valid: true,
+      kind: 2,
+    }),
+    expect.objectContaining({ name: "_kDartSnapshotText", kind: null }),
+  ]);
+  expect(value.string_pool.package_uris).toEqual([
+    "package:nextcloud/core.dart",
+    "package:saber/data/prefs.dart",
+  ]);
+  expect(value.string_pool.dart_uri_count_at_least).toBe(2);
+  expect(value.coverage).toBe("complete");
+  expect(result.value.limitations).not.toEqual(
+    expect.arrayContaining([expect.stringMatching(/snapshot symbols were/u)]),
+  );
+});
+
+it("reports a renamed-layout image without its text symbol as partial", async () => {
+  const apk = await buildApk("renamed-no-text.apk", [
+    {
+      path: "lib/arm64-v8a/libapp.so",
+      bytes: renamedAotFixtureImage(REFERENCE_HASH, { exportText: false }),
+    },
+  ]);
+  const result = await new FlutterBuildProvider().execute({
+    operation: "inspect_dart_aot",
+    input: { path: apk },
+  });
+  if (!result.ok) throw new Error(result.error.message);
+  const value = flutterResultSchemas.inspect_dart_aot.parse(
+    result.value.result,
+  );
+  expect(value.libapp.coverage).toBe("partial");
+  expect(value.libapp.snapshot_hash).toBe(REFERENCE_HASH);
+  expect(value.libapp.sections).toEqual([
+    expect.objectContaining({
+      name: "_kDartSnapshotData",
+      magic_valid: true,
+      kind: 2,
+    }),
+  ]);
+  expect(result.value.limitations).toEqual(
+    expect.arrayContaining([
+      "symbol _kDartSnapshotText is not in the dynamic symbol table",
+      "Only 1 of 2 snapshot symbols were present",
+    ]),
+  );
+});
+
+it("keeps a renamed-layout data header with a non-FullAOT kind as partial", async () => {
+  const apk = await buildApk("renamed-kind3.apk", [
+    {
+      path: "lib/arm64-v8a/libapp.so",
+      bytes: renamedAotFixtureImage(REFERENCE_HASH, { dataKind: 3 }),
+    },
+  ]);
+  const result = await new FlutterBuildProvider().execute({
+    operation: "inspect_dart_aot",
+    input: { path: apk },
+  });
+  if (!result.ok) throw new Error(result.error.message);
+  const value = flutterResultSchemas.inspect_dart_aot.parse(
+    result.value.result,
+  );
+  expect(value.libapp.coverage).toBe("partial");
+  expect(value.libapp.snapshot_hash).toBe(REFERENCE_HASH);
+  expect(value.libapp.sections).toEqual([
+    expect.objectContaining({
+      name: "_kDartSnapshotData",
+      magic_valid: true,
+      kind: 3,
+      header_length: 48,
+    }),
+    expect.objectContaining({ name: "_kDartSnapshotText", kind: null }),
+  ]);
+  expect(result.value.limitations).toEqual(
+    expect.arrayContaining([
+      expect.stringContaining(
+        "Snapshot hash sources are the headers at the start of the _kDartSnapshotData symbol; complete decoding supports kind 2",
+      ),
+      expect.stringContaining(
+        "_kDartSnapshotData has an incomplete or invalid snapshot header: kind 3 (AOT app requires 2)",
+      ),
+    ]),
+  );
 });
 
 it("reports aliased snapshot data symbols as partial coverage", async () => {

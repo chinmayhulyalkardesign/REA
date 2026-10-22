@@ -658,12 +658,17 @@ const evaluateExpressionValue = (
     const binding = resolveSemanticBindingState(context.state, node, node.name);
     if (binding === undefined)
       return { status: "unknown", reason: `Unbound identifier ${node.name}.` };
+    const assigned = binding.definitions.some(
+      ({ kind }) => kind === "assignment",
+    );
+    // A hoisted var can be read before its declarator runs, when it is still
+    // undefined. Without later assignments, only a proven order replaces the
+    // binding; an unordered read keeps the declarator value as before.
     const read =
-      binding.mutable &&
-      binding.definitions.some(({ kind }) => kind === "assignment")
+      binding.mutable && (assigned || binding.declarationKinds.has("var"))
         ? semanticBindingAtRead(binding, node, context.state.parentsByNode)
         : undefined;
-    if (read?.status === "unresolved") {
+    if (read?.status === "unresolved" && assigned) {
       const value = evaluateBinding(binding, nestedContext(context));
       if (
         value.status === "unknown" ||

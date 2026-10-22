@@ -533,6 +533,46 @@ describe("JavaScript export matching uncertain projections", () => {
   );
 });
 
+describe("JavaScript export hoisted var reads", () => {
+  it.each([
+    [
+      "a return before the declarator",
+      "return { kind: 'record', a: v }; var v = 1;",
+    ],
+    [
+      "an alias captured before the declarator",
+      "var w = v; var v = 1; return { kind: 'record', a: w };",
+    ],
+  ])("does not give %s the initializer value", async (_description, body) => {
+    const graphs = await analyzeSources({
+      left: 'export default () => ({ kind: "record" });',
+      right: `export default function make() { ${body} }`,
+    });
+    const result = compare(...graphs);
+    expect(result.changes).toEqual([
+      expect.objectContaining({
+        path: "/a",
+        right: expect.objectContaining({ availability: "unknown" }),
+      }),
+    ]);
+  });
+
+  it("keeps the initializer value for a read after the declarator", async () => {
+    const graphs = await analyzeSources({
+      left: 'export default () => ({ kind: "record" });',
+      right:
+        "export default function make() { var v = 1; return { kind: 'record', a: v }; }",
+    });
+    expect(compare(...graphs).changes).toEqual([
+      expect.objectContaining({
+        status: "added",
+        path: "/a",
+        right: { availability: "literal", value: 1 },
+      }),
+    ]);
+  });
+});
+
 describe("JavaScript export localized mutation uncertainty", () => {
   it.each([
     {

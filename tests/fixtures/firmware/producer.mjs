@@ -67,12 +67,13 @@ if (args.includes("--version")) {
       mode === "reserved-name"
         ? join(output, "$input")
         : join(output, "rootfs", "config");
-    await mkdir(join(output, "rootfs"));
+    if (mode !== "unrecognized-input") await mkdir(join(output, "rootfs"));
     const content = Buffer.from("firmware=true\n");
     if (
       mode !== "missing-file" &&
       mode !== "depth-reentry" &&
-      mode !== "depth-orphan"
+      mode !== "depth-orphan" &&
+      mode !== "unrecognized-input"
     )
       await writeFile(child, mode === "budget" ? Buffer.alloc(10000) : content);
     if (mode === "link") await symlink("/etc/passwd", join(output, "escape"));
@@ -355,6 +356,15 @@ if (args.includes("--version")) {
         subtasks: [childTask],
       },
     ];
+    if (mode === "unrecognized-input") {
+      // Unblob 26.6.4 reports nothing for a whole file without a valid chunk
+      // ("we don't consider whole files as unknown chunks").
+      records.splice(0, records.length, {
+        task: task(input, 0, ""),
+        reports: [stat(input, bytes.length), hash(sha256)],
+        subtasks: [],
+      });
+    }
     if (mode === "many-unknown") {
       records[1].reports = [
         ...records[1].reports,

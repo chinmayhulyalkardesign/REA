@@ -103,10 +103,16 @@ build's source revision, so that field remains unknown.
 - Decompressed children have unknown original byte ranges and runtime addresses.
   Task lineage does not establish a byte-for-byte mapping through decompression.
 - `partial` marks unknown/encrypted chunks, reported extraction problems,
-  unpublished links/special files or reached depth limits. `complete` means the
-  engine finished its configured extraction without those reported conditions;
-  default skip rules and format coverage still apply. It does not establish
-  complete firmware reconstruction.
+  unpublished links/special files, reached depth limits, or selected-input
+  bytes that no reported chunk covers. Unblob reports unknown chunks only
+  between valid chunks: a selected input with no recognized format, or one its
+  default skip rules pass over, reports no chunk at all. REA derives those
+  bytes as `unreported-input-region` gaps so an unexplained selection is never
+  reported as `complete`. Children with no chunks are published files whose
+  bytes are their own evidence; they yield no such gap. `complete` means the
+  engine finished its configured extraction without those reported or derived
+  conditions; format coverage still applies. It does not establish complete
+  firmware reconstruction.
 - `extraction_gaps` makes those conditions recoverable: a row identifies an
   unextracted region or a failed task/stage. A chunk retains its identity and
   byte range, plus its original-file range when it belongs to the selected input.

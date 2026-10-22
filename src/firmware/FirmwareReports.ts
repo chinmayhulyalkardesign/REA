@@ -165,6 +165,23 @@ export const normalizeBinwalkReport = (
   });
 };
 
+/** Byte intervals of `[0, length)` that no reported range covers, in byte order. */
+const uncoveredRanges = (
+  length: number,
+  ranges: readonly { readonly offset: number; readonly length: number }[],
+): { offset: number; length: number }[] => {
+  const uncovered = [];
+  let cursor = 0;
+  for (const range of [...ranges].sort((a, b) => a.offset - b.offset)) {
+    if (range.offset > cursor)
+      uncovered.push({ offset: cursor, length: range.offset - cursor });
+    cursor = Math.max(cursor, range.offset + range.length);
+  }
+  if (cursor < length)
+    uncovered.push({ offset: cursor, length: length - cursor });
+  return uncovered;
+};
+
 /** Normalize Unblob's unordered task graph, retaining unknown and failed analyses. */
 export const normalizeUnblobReport = (
   raw: unknown,
@@ -523,10 +540,28 @@ export const normalizeUnblobReport = (
       "extract_firmware",
       "Report contains tasks disconnected from the selected input",
     );
+  // Unblob reports unknown chunks only between valid chunks. A selected input
+  // with no valid chunk, or one its default skip rules pass over, reports
+  // nothing for its bytes, so derive the uncovered selection here once. A
+  // child without chunks is a published file whose bytes are their own
+  // evidence; only the selected input has bytes no result would otherwise name.
+  const unreportedInputRegions = uncoveredRanges(
+    context.length,
+    chunks
+      .filter((chunk) => chunk.input_path === "$input")
+      .map((chunk) => chunk.range),
+  ).map((range) => ({
+    range,
+    root_file_range: {
+      offset: context.offset + range.offset,
+      length: range.length,
+    },
+  }));
   return {
     files,
     sizes,
     chunks,
+    unreported_input_regions: unreportedInputRegions,
     derivations,
     depth_limited_paths: depths.sort(),
     failed_extraction_stages: failedExtractionStages.sort((left, right) =>
@@ -574,6 +609,7 @@ export const normalizeUnblobReport = (
     coverage:
       depths.length > 0 ||
       diagnostics.length > 0 ||
+      unreportedInputRegions.length > 0 ||
       chunks.some((c) => c.handler === null || c.encrypted === true)
         ? ("partial" as const)
         : ("complete" as const),

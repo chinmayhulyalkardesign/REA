@@ -26,6 +26,8 @@ const GAP_CONTINUATIONS: Record<ExtractionGap["kind"], string> = {
     "REA installs nothing. Add the named dependency to your own environment and rerun extract_firmware on the same immutable input with a fresh output_directory to re-evaluate the affected region; otherwise it stays unextracted.",
   "unknown-chunk-handler":
     "If Binwalk is configured with REA_BINWALK_COMMAND, run inspect_firmware_regions on the same input for signature hypotheses. Without configured Binwalk that inspection is unavailable. Alternatively, select a materially narrower range with extract_firmware and a fresh output_directory; the region is not decoded content.",
+  "unreported-input-region":
+    "Unblob reported no chunk covering this region of the selected input, so it was neither identified nor extracted; the region is not decoded content. If Binwalk is configured with REA_BINWALK_COMMAND, run inspect_firmware_regions on the same input for signature hypotheses. Without configured Binwalk that inspection is unavailable. Alternatively, select a materially narrower range with extract_firmware and a fresh output_directory. Treat the region as unexamined rather than empty or corrupt.",
   "encrypted-chunk":
     "No static extraction continues past encryption; treat the region as unexamined rather than empty or corrupt.",
   "extractor-failure":
@@ -84,6 +86,9 @@ const gapSortKey = (gap: ExtractionGap): string =>
     gap.kind,
     gap.provider_id ?? "",
     gap.relative_path ?? "",
+    // Rows without producer identity, such as unreported input regions,
+    // are distinguished by their byte offset.
+    gap.range === null ? "" : String(gap.range.offset).padStart(16, "0"),
   ].join("\u0000");
 
 /** Publish verified regular files, preserving links as metadata and rolling back failed writes. */
@@ -450,6 +455,19 @@ const extractionGaps = (
         ),
       })),
     ...chunkGaps("unknown-chunk-handler", (chunk) => chunk.handler === null),
+    // The producer boundary derived these from the selected size and the
+    // reported chunks; they carry no producer chunk identity.
+    ...normalized.unreported_input_regions.map((region): ExtractionGap => ({
+      kind: "unreported-input-region",
+      input_path: "$input",
+      ...emptyGap,
+      range: region.range,
+      root_file_range: region.root_file_range,
+      dependencies: [],
+      continuation_id: continuation(
+        GAP_CONTINUATIONS["unreported-input-region"],
+      ),
+    })),
     ...chunkGaps("encrypted-chunk", (chunk) => chunk.encrypted === true),
     ...chunkGaps(
       "extractor-failure",

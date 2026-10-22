@@ -117,6 +117,9 @@ export const extractionGap = z.strictObject({
   kind: z.enum([
     "missing-extractor-dependency",
     "unknown-chunk-handler",
+    /** Selected-input bytes that no reported chunk covers; the producer
+     * reports unknown chunks only between valid chunks. */
+    "unreported-input-region",
     "encrypted-chunk",
     "depth-limited",
     "extractor-failure",

@@ -376,6 +376,39 @@ it("preserves an unnamed dependency failure on its owning chunk", async () => {
   ]);
 });
 
+it("reports an unrecognized selected input as an unreported region, not complete", async () => {
+  // Issue #3756: Unblob reports no chunk for a whole file it cannot identify,
+  // so nothing in the report described the selected bytes.
+  const fixture = await firmwareFixture("unrecognized-input");
+  const result = await fixture.service.execute("extract_firmware", {
+    path: fixture.path,
+    output_directory: fixture.output,
+  });
+  if (!result.ok) throw result.error;
+  const normalized = firmwareResultSchemas.extract_firmware.parse(
+    result.value.normalized_result,
+  );
+  expect(normalized.coverage).toBe("partial");
+  expect(normalized.files).toEqual([]);
+  expect(normalized.chunks).toEqual([]);
+  expect(normalized.published_bytes).toBe(0);
+  expect(gapsWithContinuations(normalized)).toEqual([
+    {
+      kind: "unreported-input-region",
+      input_path: "$input",
+      relative_path: null,
+      handler: null,
+      provider_id: null,
+      range: { offset: 0, length: 18 },
+      root_file_range: { offset: 0, length: 18 },
+      dependencies: [],
+      continuation: expect.stringContaining(
+        "Unblob reported no chunk covering this region",
+      ),
+    },
+  ]);
+});
+
 it("routes a nested unknown chunk through its published child", async () => {
   const fixture = await firmwareFixture("nested-unknown");
   const result = await fixture.service.execute("extract_firmware", {

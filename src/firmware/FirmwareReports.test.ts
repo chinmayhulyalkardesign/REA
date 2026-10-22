@@ -76,6 +76,108 @@ describe("firmware producer chunk observations", () => {
   });
 });
 
+describe("firmware producer unreported input regions", () => {
+  const rootWithChunks = (reports: readonly Record<string, unknown>[]) => {
+    const record = root();
+    record.reports = [
+      ...record.reports.filter(
+        (report) => report.__typename__ !== "UnknownChunkReport",
+      ),
+      ...reports,
+    ] as typeof record.reports;
+    return record;
+  };
+  const chunk = (id: string, start: number, end: number) => ({
+    __typename__: "ChunkReport",
+    id,
+    start_offset: start,
+    end_offset: end,
+    size: end - start,
+    handler_name: "gzip",
+    is_encrypted: false,
+    extraction_reports: [],
+  });
+
+  it("derives the whole selection as unreported when no chunk is reported", () => {
+    // Unblob reports nothing for a whole file without a valid chunk, so the
+    // selected bytes would otherwise vanish from the result.
+    const normalized = normalizeUnblobReport([rootWithChunks([])], context);
+    expect(normalized.chunks).toEqual([]);
+    expect(normalized.unreported_input_regions).toEqual([
+      {
+        range: { offset: 0, length: 20 },
+        root_file_range: { offset: 64, length: 20 },
+      },
+    ]);
+    expect(normalized.coverage).toBe("partial");
+  });
+
+  it("derives the gaps around reported chunks in byte order", () => {
+    const normalized = normalizeUnblobReport(
+      [rootWithChunks([chunk("b", 12, 16), chunk("a", 4, 8)])],
+      context,
+    );
+    expect(normalized.unreported_input_regions).toEqual([
+      {
+        range: { offset: 0, length: 4 },
+        root_file_range: { offset: 64, length: 4 },
+      },
+      {
+        range: { offset: 8, length: 4 },
+        root_file_range: { offset: 72, length: 4 },
+      },
+      {
+        range: { offset: 16, length: 4 },
+        root_file_range: { offset: 80, length: 4 },
+      },
+    ]);
+    expect(normalized.coverage).toBe("partial");
+  });
+
+  it("treats overlapping and adjoining chunks as one covered span", () => {
+    const normalized = normalizeUnblobReport(
+      [
+        rootWithChunks([
+          chunk("a", 0, 10),
+          chunk("b", 6, 14),
+          chunk("c", 14, 20),
+        ]),
+      ],
+      context,
+    );
+    expect(normalized.unreported_input_regions).toEqual([]);
+    expect(normalized.coverage).toBe("complete");
+  });
+
+  it("does not derive regions for children without chunks", () => {
+    const parent = rootWithChunks([chunk("gzip-id", 0, 20)]);
+    const child = {
+      task: {
+        path: `${context.outputRoot}/rootfs/config`,
+        depth: 1,
+        blob_id: "gzip-id",
+        is_multi_file: false,
+      },
+      reports: [
+        {
+          __typename__: "StatReport",
+          path: `${context.outputRoot}/rootfs/config`,
+          size: 14,
+          is_file: true,
+          is_dir: false,
+          is_link: false,
+          link_target: null,
+        },
+      ],
+      subtasks: [],
+    };
+    parent.subtasks = [child.task] as typeof parent.subtasks;
+    const normalized = normalizeUnblobReport([parent, child], context);
+    expect(normalized.unreported_input_regions).toEqual([]);
+    expect(normalized.coverage).toBe("complete");
+  });
+});
+
 describe("firmware producer dependency ownership", () => {
   it("derives missing extractor dependencies from chunk and multi-file reports", () => {
     const record = root();

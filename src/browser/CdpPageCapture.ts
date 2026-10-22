@@ -49,6 +49,8 @@ interface CaptureState {
   readonly allowedOrigins: ReadonlySet<string>;
   readonly limitations: string[];
   readonly startedAt: string;
+  networkCoverageStartedAt: string;
+  consoleCoverageStartedAt: string;
 }
 
 interface CapturedSections {
@@ -77,6 +79,7 @@ export const capturePage = async (
     if (event.sessionId !== context.sessionId) return;
     events.ingest(event);
   });
+  const startedAt = new Date().toISOString();
   const state: CaptureState = {
     context,
     events,
@@ -92,7 +95,9 @@ export const capturePage = async (
           ]
         : []),
     ],
-    startedAt: new Date().toISOString(),
+    startedAt,
+    networkCoverageStartedAt: startedAt,
+    consoleCoverageStartedAt: startedAt,
   };
   try {
     return await captureAuthorizedPage(state);
@@ -259,7 +264,7 @@ const authorizeObservationWindow = async (
   if (mainFrame === undefined)
     throw new BrowserObservationError("inspect_web_page", "target_not_allowed");
   events.beginAuthorizedFrame(mainFrame.frame_id);
-  await enableObservationDomains(connection, sessionId, signal);
+  await enableObservationDomains(state);
   await report(context.progress, 2, "Observing page events");
   await delayWithCancellation(
     context.input.observation_ms,
@@ -364,12 +369,12 @@ const normalizedInspection = (
   network: {
     requests: [...state.events.network.values()],
     websocket_connections: [...state.events.webSocketConnectionsById.values()],
-    coverage_started_at: state.startedAt,
+    coverage_started_at: state.networkCoverageStartedAt,
     prior_activity_available: false,
   },
   console: {
     events: [...state.events.console],
-    coverage_started_at: state.startedAt,
+    coverage_started_at: state.consoleCoverageStartedAt,
     prior_activity_available: false,
   },
   workers: [...captured.workers],
@@ -387,13 +392,14 @@ const normalizedInspection = (
   limitations: state.limitations,
 });
 
-const enableObservationDomains = async (
-  connection: CdpConnection,
-  sessionId: string | undefined,
-  signal?: AbortSignal,
-): Promise<void> => {
+const enableObservationDomains = async (state: CaptureState): Promise<void> => {
+  const { connection, sessionId, signal } = state.context;
+  // Coverage starts at dispatch so events delivered while a domain is being
+  // enabled remain inside the reported section boundary.
+  state.consoleCoverageStartedAt = new Date().toISOString();
   await connection.send("Runtime.enable", {}, sessionId, signal);
   await connection.send("Debugger.enable", {}, sessionId, signal);
+  state.networkCoverageStartedAt = new Date().toISOString();
   await connection.send("Network.enable", {}, sessionId, signal);
 };
 

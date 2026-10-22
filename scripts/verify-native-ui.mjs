@@ -244,6 +244,24 @@ try {
   );
   if (mismatch.ok || !mismatch.error.message.includes("target-mismatch"))
     throw new Error("Real helper did not reject changed target bytes");
+  // This Node process is not a LaunchServices application.
+  const unregistered = await observeNativeUi(
+    target.value,
+    "observe_native_ui",
+    { ...scope, pid: process.pid },
+    { environment: process.env },
+  );
+  if (
+    unregistered.ok ||
+    unregistered.error._tag !== "AnalysisInputError" ||
+    unregistered.error.issues[0]?.path[0] !== "pid" ||
+    !unregistered.error.issues[0]?.message?.startsWith(
+      "process-not-application:",
+    )
+  )
+    throw new Error(
+      `Real helper did not reject a non-application PID as invalid input: ${unregistered.ok ? "observed" : unregistered.error.message}`,
+    );
   report = {
     ok: true,
     verification_status: observation.ok ? "passed" : "permission-boundary-only",
@@ -254,6 +272,7 @@ try {
     scenario: scenarioStatus,
     permission_failure: observation.ok ? null : observation.error.message,
     mismatch_rejected: true,
+    unregistered_pid_rejected: true,
     target_owned: true,
   };
 } finally {

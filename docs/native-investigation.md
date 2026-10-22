@@ -598,7 +598,10 @@ filter on macOS 14+; accessibility reads stay within that window. Missing Screen
 Recording/Accessibility permissions produce actionable errors without broad
 capture or automatic permission prompts. Executable bytes and process launch
 time guard against a different target or PID reuse. AX selection requires one
-unique geometry match; ambiguity fails closed.
+unique geometry match; ambiguity fails closed. When the first capture finds that
+the PID is not a LaunchServices application, runs another executable, or does
+not own the window, the call fails as invalid input naming `pid` or `window_id`
+and the tool stays available in `binary_session`.
 
 `capture_native_ui_scenario` takes AX child-index paths for press, increment/
 decrement scrolling and text-value entry, or bounded waits. No global event

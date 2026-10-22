@@ -532,6 +532,69 @@ describe("native UI interruption provenance", () => {
   });
 });
 
+describe("native UI selection failures", () => {
+  it.each([
+    { code: "process-not-application", field: "pid" },
+    { code: "process-mismatch", field: "pid" },
+    { code: "window-mismatch", field: "window_id" },
+  ])(
+    "reports an unresolved initial $field selection ($code) as invalid input",
+    async ({ code, field }) => {
+      const message = `Selected ${field} does not resolve to the target window`;
+      const result = await observeNativeUi(
+        target,
+        "capture_native_ui_scenario",
+        { ...scope, steps: [{ kind: "wait", milliseconds: 0 }] },
+        {
+          environment: {},
+          invoke: async () => ({ ok: false, code, message }),
+        },
+      );
+      expect(result.ok).toBe(false);
+      if (result.ok) return;
+      expect(result.error).toMatchObject({
+        _tag: "AnalysisInputError",
+        userMessage: message,
+        issues: [
+          {
+            path: [field],
+            reason: "invalid_value",
+            message: `${code}: ${message}`,
+          },
+        ],
+      });
+    },
+  );
+  it("keeps a window that disappears after a completed capture as a capability failure", async () => {
+    let calls = 0;
+    const result = await observeNativeUi(
+      target,
+      "capture_native_ui_scenario",
+      { ...scope, steps: [{ kind: "click", path: [0] }] },
+      {
+        environment: {},
+        invoke: async () =>
+          ++calls === 1
+            ? { ok: true, result: snapshot }
+            : {
+                ok: false,
+                code: "window-mismatch",
+                message:
+                  "Selected window is absent or belongs to another process",
+              },
+      },
+    );
+    expect(calls).toBe(2);
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error._tag).toBe("AnalysisCapabilityUnavailableError");
+    expect(result.error.partialObservation).toMatchObject({
+      initial: snapshot,
+      steps: [{ index: 0, outcome: "failed", after: null }],
+    });
+  });
+});
+
 describe("native UI target and cancellation failures", () => {
   it.each([
     "accessibility-denied",
@@ -547,7 +610,12 @@ describe("native UI target and cancellation failures", () => {
       }),
     });
     expect(result.ok).toBe(false);
-    if (!result.ok) expect(result.error.message).toContain(code);
+    if (result.ok) return;
+    expect(result.error._tag).toBe("AnalysisCapabilityUnavailableError");
+    expect(result.error.message).toContain(code);
+    expect(result.error.userMessage).toBe(
+      "Grant permission or select an unambiguous window",
+    );
   });
   it("preserves the underlying helper failure reason in diagnostics", async () => {
     const result = await observeNativeUi(target, "observe_native_ui", scope, {

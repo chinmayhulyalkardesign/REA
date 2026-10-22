@@ -50,6 +50,41 @@ const responseSchema = z.discriminatedUnion("ok", [
     message: z.string(),
   }),
 ]);
+/** Helper refusals that mean the caller's PID or window did not select the target window. */
+const SELECTION_REFUSALS: ReadonlyMap<string, "pid" | "window_id"> = new Map([
+  ["process-not-application", "pid"],
+  ["process-mismatch", "pid"],
+  ["window-mismatch", "window_id"],
+]);
+
+/**
+ * Only the first capture tests the caller's selection; after it succeeds, a
+ * changed process or window is observed application state, not invalid input.
+ */
+const helperRefusal = (
+  operation: "observe_native_ui" | "capture_native_ui_scenario",
+  refusal: { readonly code: string; readonly message: string },
+  initialCapture: boolean,
+): AnalysisError => {
+  const field = initialCapture
+    ? SELECTION_REFUSALS.get(refusal.code)
+    : undefined;
+  return field === undefined
+    ? new AnalysisCapabilityUnavailableError(
+        "native-macos",
+        operation,
+        `${refusal.code}: ${refusal.message}`,
+        { userMessage: refusal.message },
+      )
+    : new AnalysisInputError(operation, { userMessage: refusal.message }, [
+        {
+          path: [field],
+          reason: "invalid_value",
+          message: `${refusal.code}: ${refusal.message}`,
+        },
+      ]);
+};
+
 /** Narrow process seam preserves the native helper's OS and target failures. */
 export type NativeUiHelper = (
   parameters: Readonly<Record<string, unknown>>,
@@ -181,11 +216,7 @@ const observeWithHelper = async (
       );
       if (!response.ok)
         return err(
-          new AnalysisCapabilityUnavailableError(
-            "native-macos",
-            operation,
-            `${response.code}: ${response.message}`,
-          ),
+          helperRefusal(operation, response, launchTime === undefined),
         );
       if (
         response.result.window.pid !== input.pid ||

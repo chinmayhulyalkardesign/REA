@@ -42,15 +42,28 @@ func windowBounds(_ element: AXUIElement) -> CGRect? {
   guard AXValueGetValue(p as! AXValue, .cgPoint, &point), AXValueGetValue(s as! AXValue, .cgSize, &size) else { return nil }
   return CGRect(origin: point, size: size)
 }
-func observe(_ request: Request) async throws -> [String: Any] {
-  guard let app = NSRunningApplication(processIdentifier: request.pid), let url = app.executableURL else {
-    try fail("target-mismatch", "Selected PID does not expose an application executable URL")
+/// Diagnostic text only; the path does not establish process identity.
+func unregisteredProcessReason(_ pid: Int32) -> String {
+  var path = [CChar](repeating: 0, count: 4 * Int(MAXPATHLEN))
+  if proc_pidpath(pid, &path, UInt32(path.count)) > 0 {
+    return "LaunchServices has no running application for selected PID \(pid) (\(String(cString: path))); select the PID that owns the window"
   }
-  guard let canonicalPointer = realpath(url.path, nil) else { try fail("target-mismatch", "Running executable path cannot be resolved") }
+  return errno == ESRCH
+    ? "No process with selected PID \(pid) is running"
+    : "LaunchServices has no running application for selected PID \(pid); select the PID that owns the window"
+}
+func observe(_ request: Request) async throws -> [String: Any] {
+  guard let app = NSRunningApplication(processIdentifier: request.pid) else {
+    try fail("process-not-application", unregisteredProcessReason(request.pid))
+  }
+  guard let url = app.executableURL else {
+    try fail("executable-unavailable", "LaunchServices reports no executable URL for application PID \(request.pid)")
+  }
+  guard let canonicalPointer = realpath(url.path, nil) else { try fail("executable-unavailable", "Running executable path cannot be resolved") }
   defer { free(canonicalPointer) }
   let canonicalExecutable = String(cString: canonicalPointer)
   guard canonicalExecutable == request.executable else {
-    try fail("target-mismatch", "Selected PID executable \(canonicalExecutable) differs from active target \(request.executable)")
+    try fail("process-mismatch", "Selected PID executable \(canonicalExecutable) differs from active target \(request.executable)")
   }
   guard let launch = app.launchDate?.timeIntervalSince1970 else {
     try fail("process-identity-unavailable", "Selected application does not expose a launch time; stable PID reuse checks are unavailable")

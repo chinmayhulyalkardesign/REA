@@ -56,6 +56,23 @@ it("passes the selected environment and ownership token to Electron launch", asy
   });
 });
 
+it("forwards the selected X11 authorization path without disabling authentication", () => {
+  expect(
+    safeElectronEnvironment(
+      {
+        DISPLAY: ":1",
+        XAUTHORITY: "/run/user/1004/gdm/Xauthority",
+        APP_SECRET: "must-not-pass",
+      },
+      "run-id",
+    ),
+  ).toEqual({
+    DISPLAY: ":1",
+    XAUTHORITY: "/run/user/1004/gdm/Xauthority",
+    REA_PROCESS_RUN_ID: "run-id",
+  });
+});
+
 it("passes required Windows runtime variables without inheriting unrelated values", () => {
   expect(
     safeElectronEnvironment(

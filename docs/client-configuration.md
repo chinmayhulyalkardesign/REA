@@ -246,6 +246,41 @@ Review those files manually: setup never edits administrator/workspace settings
 or grants workspace trust. Trust supplied only by a running IDE is outside this
 standalone CLI check.
 
+### Gemini CLI `400 INVALID_ARGUMENT` before any tool call
+
+A Gemini model/API `400 INVALID_ARGUMENT` during startup or on the first
+request is not proof that Ghidra, the selected binary, or an REA tool failed.
+[Issue #4620](https://github.com/morluto/rea/issues/4620) reports this on
+Windows with REA 6.5.0; the exact rejected model request and its tool schemas
+were not captured, so an oversized catalog remains a hypothesis, not a
+confirmed root cause.
+
+To separate registration failures from model-request failures:
+
+1. Run `rea doctor --client gemini_cli --json` and verify which client
+   configuration actually wins. A healthy result checks registration; it does
+   **not** verify that the model API accepts the advertised tools.
+2. Try a fresh Gemini CLI session with the REA MCP entry disabled, then one
+   with REA enabled. Keep the model, credentials and other MCP entries the same.
+   If the error occurs only with REA enabled, inspect the MCP startup log and
+   the model-side error separately.
+3. As a bounded diagnostic, add
+   `"REA_MCP_INPUT_SCHEMA_PROFILE": "compact"` to the existing
+   `mcpServers.rea.env` object and restart Gemini CLI. This reduces the
+   advertised size of individual input schemas while keeping canonical server
+   validation. It does **not** reduce the number of tools or guarantee that a
+   provider's tool-count, payload-size or schema-dialect limit will be met.
+   Preserve the registration's existing command, arguments and environment.
+4. If the model request still fails, capture the Gemini CLI and REA versions,
+   whether `tools/list` succeeded, the active input-schema profile, and the
+   **sanitized** error stage. Never share API keys, MCP environment secrets,
+   local private paths, or captured target data. A report with the rejected
+   field or schema is more actionable than attributing every 400 to tool count.
+
+Tool-family scoping for clients that send every tool definition is tracked in
+[issue #3246](https://github.com/morluto/rea/issues/3246); compact schemas
+alone do not implement that feature.
+
 ## Codex and Devin
 
 Codex treats an unset or empty `CODEX_HOME` as `~/.codex`. Its MCP server

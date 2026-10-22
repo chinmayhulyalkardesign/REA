@@ -154,6 +154,186 @@ it("keeps selected-record page coverage distinct from capture coverage and unsaf
   });
 });
 
+it("selects exact HAR MIME forms without payloads and preserves default previews and source ordinals", () => {
+  const { parent, report } = capture();
+  report.format = "har";
+  report.records.forEach((record, index) => {
+    record.reported = {
+      request: {
+        method: "GET",
+        url: "https://api.test/items",
+        headers: [{ name: "X-private", value: "not-previewed" }],
+      },
+      response: {
+        status: 200,
+        content: {
+          mimeType: index === 0 ? " Application/JSON; charset=UTF-8 " : "",
+          text: "original body",
+          size: 13,
+        },
+        headers: [{ name: "Content-Type", value: "not-previewed" }],
+      },
+    };
+  });
+  const input = {
+    kind: "capture" as const,
+    detail: "preview" as const,
+    offset: 0,
+    limit: 2,
+  };
+  const selected = projectAnalysisView(parent, {
+    ...input,
+    include_response_content_type: true,
+  });
+  const omitted = projectAnalysisView(parent, input);
+  const disabled = projectAnalysisView(parent, {
+    ...input,
+    include_response_content_type: false,
+  });
+  if (
+    !selected.ok ||
+    selected.value.kind !== "capture" ||
+    !omitted.ok ||
+    omitted.value.kind !== "capture" ||
+    !disabled.ok ||
+    disabled.value.kind !== "capture"
+  )
+    throw new Error("Expected previews");
+  expect(disabled.value.items).toEqual(omitted.value.items);
+  expect(selected.value.items).toMatchObject([
+    {
+      ordinal: 7,
+      reported: {
+        response: {
+          content: { mimeType: " Application/JSON; charset=UTF-8 " },
+        },
+      },
+    },
+    { ordinal: 2, reported: { response: { content: { mimeType: "" } } } },
+  ]);
+  expect(selected.value.coverage).toEqual(omitted.value.coverage);
+  expect(selected.value.parent_evidence_id).toBe(parent.evidenceId);
+  for (const value of ["original body", "not-previewed", '"headers"', '"size"'])
+    expect(JSON.stringify(selected.value)).not.toContain(value);
+  expect(omitted.value.items[0]?.reported).not.toHaveProperty(
+    "response.content",
+  );
+  expect(report.records[0]?.reported).toHaveProperty(
+    "response.content.text",
+    "original body",
+  );
+});
+
+it.each([
+  { response: { status: 204 } },
+  { response: { status: 200, content: { text: "not-previewed" } } },
+])(
+  "keeps absent HAR content or MIME fields absent in selected previews: %j",
+  (reported) => {
+    const { parent, report } = capture();
+    report.format = "har";
+    report.records[0]!.reported = reported;
+    const selected = projectAnalysisView(parent, {
+      kind: "capture",
+      detail: "preview",
+      offset: 0,
+      limit: 1,
+      include_response_content_type: true,
+    });
+    if (!selected.ok || selected.value.kind !== "capture")
+      throw new Error("Expected selected HAR preview");
+    expect(selected.value.items[0]?.reported).not.toHaveProperty(
+      "response.content",
+    );
+    expect(selected.value.items[0]?.ordinal).toBe(7);
+    expect(selected.value.parent_evidence_id).toBe(parent.evidenceId);
+    expect(report.records[0]!.reported).toEqual(reported);
+    expect(JSON.stringify(selected)).not.toContain("not-previewed");
+  },
+);
+
+it.each(["", "/response", "/response/content", "/response/content/mimeType"])(
+  "keeps HAR MIME under an explicit redaction at %s out of previews",
+  (pointer) => {
+    const { parent, report } = capture();
+    report.format = "har";
+    const record = report.records[0]!;
+    record.reported = {
+      response: { content: { mimeType: "application/x-withheld" } },
+    };
+    record.redactions = [{ pointer, reason: "explicit-sensitive-value" }];
+    const result = projectAnalysisView(parent, {
+      kind: "capture",
+      detail: "preview",
+      offset: 0,
+      limit: 1,
+      include_response_content_type: true,
+    });
+    expect(result.ok).toBe(true);
+    expect(JSON.stringify(result)).not.toContain("application/x-withheld");
+  },
+);
+
+it("does not promote a MIME value hidden by a byte descriptor or reinterpret containers as MIME strings", () => {
+  const { parent, report } = capture();
+  report.format = "har";
+  const record = report.records[0]!;
+  record.reported = {
+    response: { content: { mimeType: "application/x-withheld" } },
+  };
+  record.binary_fields = [
+    {
+      pointer: "/response/content/mimeType",
+      representation: "har-base64-content",
+      state: "redacted",
+      content_base64: null,
+      bytes: null,
+      sha256: null,
+    },
+  ];
+  const view = {
+    kind: "capture" as const,
+    detail: "preview" as const,
+    offset: 0,
+    limit: 1,
+    include_response_content_type: true,
+  };
+  expect(JSON.stringify(projectAnalysisView(parent, view))).not.toContain(
+    "application/x-withheld",
+  );
+  record.binary_fields = [];
+  record.reported = {
+    response: { content: { mimeType: { text: "not-a-scalar-mime" } } },
+  };
+  expect(JSON.stringify(projectAnalysisView(parent, view))).not.toContain(
+    "not-a-scalar-mime",
+  );
+  record.reported = { response: { content: { mimeType: null } } };
+  expect(projectAnalysisView(parent, view)).toMatchObject({
+    ok: true,
+    value: {
+      items: [{ reported: { response: { content: { mimeType: null } } } }],
+    },
+  });
+});
+
+it.each([
+  { format: "saz" as const, detail: "preview" as const },
+  { format: "har" as const, detail: "complete" as const },
+])("rejects MIME selection outside HAR previews: %j", ({ format, detail }) => {
+  const { parent, report } = capture();
+  report.format = format;
+  expect(
+    projectAnalysisView(parent, {
+      kind: "capture",
+      detail,
+      offset: 0,
+      limit: 1,
+      include_response_content_type: true,
+    }),
+  ).toMatchObject({ ok: false, error: { _tag: "AnalysisInputError" } });
+});
+
 it("retains explicitly unknown digests and rejects a different subject path", () => {
   const { parent, report } = capture();
   const unknown = projectAnalysisView(

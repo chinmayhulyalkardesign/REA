@@ -81,6 +81,12 @@ it in the view for distinct observed names with original record ordinals. Query
 values are omitted; the names establish neither required parameters nor a
 complete server schema. Keep the original parent Evidence for exact URLs.
 
+When the connected schema advertises `include_response_content_type`, select it
+on HAR `capture` previews to compare recorded MIME types without loading bodies:
+`view: {kind: "capture", detail: "preview", include_response_content_type: true}`.
+Missing fields are unknown. Preserve exact reported forms and original ordinals;
+the view does not reopen the capture or infer types from payloads.
+
 Use `inspect_analysis_view` with `view: {kind: "environment-manifest"}` on the
 same retained HAR Evidence to project the primary origin's request lines into
 named tools with path templates, parameters, observed query names, value-free

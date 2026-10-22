@@ -35,6 +35,63 @@ import { createEvidenceBundle } from "../../../src/domain/evidenceBundle.js";
 import { inspectEvidenceBundle } from "../../../src/application/investigation/InspectEvidenceBundle.js";
 
 cliTest(
+  "projects HAR MIME headlines from portable Evidence without a large body through compiled CLI",
+  async ({ cli }) => {
+    const root = await createTestTempDirectory("rea-har-mime-preview-cli-");
+    const capture = analysisViewCaptureFixture();
+    capture.records = [capture.records[3]!, capture.records[1]!];
+    capture.records.forEach((record, index) => {
+      record.reported = {
+        request: { method: "GET", url: "https://api.test/items" },
+        response: {
+          status: 200,
+          content: {
+            mimeType: index === 0 ? "APPLICATION/JSON;charset=utf-8" : "",
+            text: "not-previewed-body".repeat(100000),
+          },
+        },
+      };
+    });
+    const parent = analysisViewCaptureEvidence(capture);
+    const path = join(root, "view.json");
+    await writeFile(
+      path,
+      JSON.stringify({
+        source: { kind: "inline", evidence: parent },
+        view: {
+          kind: "capture",
+          detail: "preview",
+          include_response_content_type: true,
+          limit: 2,
+        },
+      }),
+    );
+    const response = await cli.run({
+      arguments: ["inspect-analysis-view", path, "--json"],
+    });
+    expect(response.exitCode, response.stdout).toBe(0);
+    const value = parseEvidence(response.json);
+    expect(value.normalized_result).toMatchObject({
+      parent_evidence_id: parent.evidence_id,
+      coverage: { total: 2, exhausted: true },
+      items: [
+        {
+          ordinal: 3,
+          reported: {
+            response: {
+              content: { mimeType: "APPLICATION/JSON;charset=utf-8" },
+            },
+          },
+        },
+        { ordinal: 1, reported: { response: { content: { mimeType: "" } } } },
+      ],
+    });
+    expect(response.stdout).not.toContain("not-previewed-body");
+    expect(response.stdout.length).toBeLessThan(16000);
+  },
+);
+
+cliTest(
   "authenticates an exact portable parent for non-managed views and rejects ambiguous or altered sources",
   async ({ cli }) => {
     const root = await createTestTempDirectory("rea-analysis-bundle-cli-");

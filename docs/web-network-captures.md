@@ -47,6 +47,16 @@ order; producer ordinals remain unchanged. `total_records` counts the original
 capture while `retained_records` and page coverage count records in the parent.
 An exhausted page does not establish absence from unselected records.
 
+For HAR API comparisons, select `include_response_content_type: true` with
+`detail: "preview"` to retain the exact reported `response.content.mimeType`
+alongside the request/status headline fields. Its original spelling and
+parameters remain unchanged; this projection does not parse headers or infer a
+type from body content. Headers and bodies stay omitted, including when a full
+record would exceed MCP's transport budget. Missing, withheld or structurally
+unavailable fields remain unknown. Default and explicit `false` previews keep
+their existing selected fields. This option requires HAR preview pages;
+complete pages already retain all reported fields.
+
 Views do not reopen the file or rerun its decoder. They remain historical
 Evidence if the source changes or disappears; inspect the capture again to
 observe new bytes. The inspection tool's default `detail: "complete"` preserves

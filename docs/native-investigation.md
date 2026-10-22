@@ -690,6 +690,23 @@ debugged; `inspect_signature` reports the signature's `hardened_runtime` value
 and its `entitlements`, including `com.apple.security.get-task-allow` when it
 is present. A denied trace reports the `debugger-attach-denied` reason.
 
+Each slice of a universal Mach-O is signed on its own. The `inspect_signature`
+identity fields (`identifier`, `cdhashes`, `hardened_runtime`, `entitlements`,
+authorities) describe the slice codesign selects by default for the host, and a
+limitation names that slice. REA queries every other slice; one signed with
+another identifier, team, authorities, hardened-runtime state or entitlements is
+named in a `Mach-O slices signed differently` limitation with its differing
+values, an unsigned slice in `Unsigned Mach-O slices`. `designated_requirement`
+comes from the whole file; when it names CDHashes that `cdhashes` does not
+list, a limitation says which slice each belongs to, or that none matched.
+When the default slice of a universal file is unsigned, `signed` is false for
+that slice, the slice names come from `lipo -archs` (or the target's CPU
+families when lipo is unavailable), and a limitation names the signed slices
+with their identifier, team, authorities, CDHash and hardened-runtime state.
+Differing entitlements are listed with their values; identifiers, authorities and entitlement keys are JSON-quoted in these sentences, and two plists that project to the same JSON but differ in plist value types (a `<data>` value against a dictionary shaped like its wrapper) are reported as different. Slice entitlements that cannot be read or decoded stay out of the
+comparison and are named in a limitation. Per-slice queries appear in
+`provenance` as `codesign -d -a <slice>` commands.
+
 ## Provider and verification boundaries
 
 Install a Ghidra 12.1.x release and the 64-bit full JDK it declares, then configure REA to

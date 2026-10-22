@@ -60,14 +60,26 @@ describe.skipIf(process.platform !== "darwin")(
               authorities: [],
               entitlements: null,
               designated_requirement: expect.stringMatching(/^cdhash H"/u),
-              limitations: [
+              limitations: expect.arrayContaining([
                 expect.stringContaining("trust validation are not examined."),
-              ],
+              ]),
             },
-            limitations: [
+            limitations: expect.arrayContaining([
               expect.stringContaining("trust validation are not examined."),
-            ],
+            ]),
           });
+          // /usr/bin/true is universal, so the result also names the slice
+          // the fields describe; none of the forged text may reach any
+          // limitation either.
+          const { limitations } = (
+            result.json as { normalized_result: { limitations: string[] } }
+          ).normalized_result;
+          for (const text of limitations) {
+            expect(text).not.toContain("Developer ID Application");
+            expect(text).not.toContain("forged");
+            expect(text).not.toContain("get-task-allow");
+            expect(text).not.toContain("anchor apple");
+          }
         }
         const identifier = await cli.run({
           arguments: ["inspect-signature", program, "--json"],

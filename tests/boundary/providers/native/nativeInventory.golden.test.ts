@@ -1,4 +1,3 @@
-import { inspectSignatureSchema } from "../../../../src/domain/native/nativeInspection.js";
 import { realpath, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { expect, it } from "vitest";
@@ -14,6 +13,7 @@ import {
   type NativeCommandOptions,
   type NativeCommandRunner,
 } from "../../../../src/native/CommandRunner.js";
+import { inspectSignatureSchema } from "../../../../src/domain/native/nativeInspection.js";
 import { NativeMacOSProvider } from "../../../../src/native/NativeMacOSProvider.js";
 import { parseOtoolLoadCommands } from "../../../../src/native/parsers/otool.js";
 import { parseDyldSymbols } from "../../../../src/native/parsers/dyldInfo.js";
@@ -27,6 +27,26 @@ import {
 import { createTestTempDirectory } from "../../../fixtures/temporaryDirectory.js";
 
 const signatureTarget = async (
+  signedArchitecture: "arm64" | "arm64e" = "arm64",
+) => {
+  const target = await signatureTargetFile(signedArchitecture);
+  return target;
+};
+
+/** The same two-slice file classified as a universal container. */
+const universalSignatureTarget = async (
+  signedArchitecture: "arm64" | "arm64e" = "arm64",
+) => {
+  const { format: _format, ...target } =
+    await signatureTargetFile(signedArchitecture);
+  return {
+    ...target,
+    format: "mach-o-universal" as const,
+    universalSlice: { offset: 0, size: 0 },
+  };
+};
+
+const signatureTargetFile = async (
   signedArchitecture: "arm64" | "arm64e" = "arm64",
 ) => {
   const path = join(
@@ -134,6 +154,589 @@ it("reports unsigned slices when a universal Mach-O has mixed signatures", async
       ]),
     });
   }
+});
+
+it("names the described slice and the differently signed slices of a signed universal Mach-O", async () => {
+  // Real captures: the arm64 slice (codesign's default here) has the hardened
+  // runtime and disable-library-validation; the x86_64 slice has neither and
+  // carries get-task-allow under another identifier.
+  const load = (name: string) => fixture(`codesign-universal-signed/${name}`);
+  const client = new NativeMacOSProvider(
+    {},
+    sliceRunner({
+      aggregate: await load("aggregate.txt"),
+      requirements: await load("requirements.txt"),
+      entitlements: await load("entitlements-aggregate.xml"),
+      slices: {
+        x86_64: {
+          display: await load("slice-x86_64.txt"),
+          entitlements: await load("entitlements-x86_64.xml"),
+        },
+        arm64: {
+          display: await load("slice-arm64.txt"),
+          entitlements: await load("entitlements-arm64.xml"),
+        },
+      },
+    }),
+    "darwin",
+  ).createClient(await signatureTarget("arm64"));
+
+  const execution = await client.execute("inspect_signature", {});
+
+  if (!execution.ok) throw execution.error;
+  const result = execution.value.result as {
+    limitations: string[];
+    provenance: { command: string[]; exit: { code: number | null } }[];
+  };
+  expect(result).toMatchObject({
+    signed: true,
+    identifier: "com.example.armslice",
+    cdhashes: ["133d589374281103e27b32ee243781884bc41413"],
+    hardened_runtime: true,
+    entitlements: { "com.apple.security.cs.disable-library-validation": true },
+  });
+  expect(result.limitations).toEqual(
+    expect.arrayContaining([
+      "Signature fields describe the arm64 slice that codesign displayed by default; other signed slices: x86_64 (CDHash 269615ed3412eb7a8c0945e51c76355412db4b12).",
+      `Mach-O slices signed differently from the arm64 slice: x86_64 (identifier "com.example.x86slice"; hardened runtime off; entitlements "com.apple.security.cs.disable-library-validation" absent, "com.apple.security.get-task-allow": true).`,
+      "designated_requirement covers the whole file and names CDHashes of other slices (x86_64 269615ed3412eb7a8c0945e51c76355412db4b12); cdhashes lists only the described slice.",
+    ]),
+  );
+  expect(
+    result.limitations.filter((text) => text.includes("Unsigned Mach-O")),
+  ).toEqual([]);
+  const commands = result.provenance.map(({ command }) =>
+    command.slice(1, -1).join(" "),
+  );
+  expect(commands).toEqual([
+    "-d --verbose=4",
+    "-d -r-",
+    "-d --entitlements :-",
+    "-d -a x86_64 --verbose=4",
+    // Only the slice that differs from the aggregate is asked for entitlements.
+    "-d -a x86_64 --entitlements :-",
+    "-d -a arm64 --verbose=4",
+  ]);
+  expect(result.provenance.every(({ exit }) => exit.code === 0)).toBe(true);
+});
+
+it("adds only the described-slice note when every slice is signed alike", async () => {
+  // Ad hoc signing a universal file gives every slice the same identifier
+  // and flags, as `codesign -s -` does; only the CDHashes differ.
+  const load = (name: string) => fixture(`codesign-universal-signed/${name}`);
+  const aggregate = await load("aggregate.txt");
+  const alike = (await load("slice-x86_64.txt"))
+    .replace(/^Identifier=.*$/mu, "Identifier=com.example.armslice")
+    .replace(
+      /^CodeDirectory .*$/mu,
+      /^CodeDirectory .*$/mu.exec(aggregate)?.[0] ?? "",
+    );
+  const client = new NativeMacOSProvider(
+    {},
+    sliceRunner({
+      aggregate,
+      requirements: await load("requirements.txt"),
+      entitlements: await load("entitlements-aggregate.xml"),
+      slices: {
+        x86_64: {
+          display: alike,
+          entitlements: await load("entitlements-aggregate.xml"),
+        },
+        arm64: {
+          display: await load("slice-arm64.txt"),
+          entitlements: await load("entitlements-arm64.xml"),
+        },
+      },
+    }),
+    "darwin",
+  ).createClient(await signatureTarget("arm64"));
+
+  const execution = await client.execute("inspect_signature", {});
+
+  if (!execution.ok) throw execution.error;
+  const { limitations } = execution.value.result as { limitations: string[] };
+  expect(limitations).toContain(
+    "Signature fields describe the arm64 slice that codesign displayed by default; other signed slices: x86_64 (CDHash 269615ed3412eb7a8c0945e51c76355412db4b12).",
+  );
+  expect(limitations.some((text) => text.includes("signed differently"))).toBe(
+    false,
+  );
+});
+
+it("names signed slices when codesign's default slice is unsigned", async () => {
+  // codesign's default slice (x86_64 here) is unsigned, so the aggregate
+  // display says "not signed at all" and has no Format line. lipo names the
+  // exact slices: the target only knows the arm64 CPU family, but the
+  // signed slice is arm64e.x1, which codesign -a accepts by that name.
+  const load = (name: string) => fixture(`codesign-universal-signed/${name}`);
+  // codesign frames the unsigned verdict with the exact snapshot path.
+  const unsignedFor = (snapshot: string) =>
+    `${snapshot}: code object is not signed at all\n`;
+  const armDisplay = (await load("slice-arm64.txt")).replace(
+    "Format=Mach-O thin (arm64)",
+    "Format=Mach-O thin (arm64e.x1)",
+  );
+  const runner: NativeCommandRunner = {
+    run(tool: string, arguments_: readonly string[], options) {
+      const architectureIndex = arguments_.indexOf("-a");
+      const architecture =
+        architectureIndex < 0 ? null : arguments_[architectureIndex + 1];
+      const lipo = tool === "lipo";
+      const signedSlice = architecture === "arm64e.x1";
+      const stdout = lipo ? "x86_64 arm64e.x1\n" : "";
+      const stderr = lipo
+        ? ""
+        : signedSlice
+          ? armDisplay
+          : unsignedFor(arguments_.at(-1) ?? "");
+      const exitCode = lipo || signedSlice ? 0 : 1;
+      const capture: NativeCommandCapture = {
+        tool,
+        executable: `/usr/bin/${tool}`,
+        executableSha256: "a".repeat(64),
+        toolVersion: null,
+        versionReason: "fixture",
+        arguments: [...arguments_],
+        stdout,
+        stderr,
+        stdoutBytes: Buffer.byteLength(stdout),
+        stderrBytes: Buffer.byteLength(stderr),
+        exitCode,
+        signal: null,
+      };
+      return Promise.resolve(
+        exitCode === 0 || options.acceptNonZero === true
+          ? ok(capture)
+          : err(new NativeCommandFailure(tool, "nonzero-exit", exitCode)),
+      );
+    },
+  };
+  const client = new NativeMacOSProvider({}, runner, "darwin").createClient(
+    await universalSignatureTarget("arm64"),
+  );
+
+  const execution = await client.execute("inspect_signature", {});
+
+  if (!execution.ok) throw execution.error;
+  const result = execution.value.result as {
+    signed: boolean;
+    limitations: string[];
+    provenance: { command: string[]; exit: { code: number | null } }[];
+  };
+  expect(result.signed).toBe(false);
+  expect(result.limitations).toEqual(
+    expect.arrayContaining([
+      "Artifact is not signed.",
+      "Unsigned Mach-O slices: x86_64.",
+      `Mach-O slices signed although codesign's default slice is unsigned: arm64e.x1 (identifier "com.example.armslice"; team identifier not set; authorities none; CDHash 133d589374281103e27b32ee243781884bc41413; hardened runtime on); signed is false for the default slice and their entitlements were not reported.`,
+    ]),
+  );
+  // A fully unsigned file is not "mixed"; that wording needs a signed slice.
+  expect(
+    result.limitations.filter((text) => text.includes("mixed signing")),
+  ).toHaveLength(2);
+  expect(
+    result.provenance.map(({ command }) =>
+      command
+        .map((part, index) => (index === 0 ? part.split("/").at(-1) : part))
+        .slice(0, -1)
+        .join(" "),
+    ),
+  ).toEqual([
+    "codesign -d --verbose=4",
+    "codesign -d -r-",
+    "codesign -d --entitlements :-",
+    "lipo -archs",
+    "codesign -d -a x86_64 --verbose=4",
+    "codesign -d -a arm64e.x1 --verbose=4",
+  ]);
+});
+
+it("falls back to the target's CPU families when lipo is unavailable", async () => {
+  const unsignedFor = (snapshot: string) =>
+    `${snapshot}: code object is not signed at all\n`;
+  const armDisplay = await fixture("codesign-universal-signed/slice-arm64.txt");
+  const runner: NativeCommandRunner = {
+    run(tool: string, arguments_: readonly string[], options) {
+      if (tool === "lipo")
+        return Promise.resolve(
+          err(new NativeCommandFailure(tool, "unavailable", null)),
+        );
+      const architecture = arguments_[arguments_.indexOf("-a") + 1];
+      const signedSlice = arguments_.includes("-a") && architecture === "arm64";
+      const stderr = signedSlice
+        ? armDisplay
+        : unsignedFor(arguments_.at(-1) ?? "");
+      const exitCode = signedSlice ? 0 : 1;
+      const capture: NativeCommandCapture = {
+        tool,
+        executable: `/usr/bin/${tool}`,
+        executableSha256: "a".repeat(64),
+        toolVersion: null,
+        versionReason: "fixture",
+        arguments: [...arguments_],
+        stdout: "",
+        stderr,
+        stdoutBytes: 0,
+        stderrBytes: Buffer.byteLength(stderr),
+        exitCode,
+        signal: null,
+      };
+      return Promise.resolve(
+        exitCode === 0 || options.acceptNonZero === true
+          ? ok(capture)
+          : err(new NativeCommandFailure(tool, "nonzero-exit", exitCode)),
+      );
+    },
+  };
+  const client = new NativeMacOSProvider({}, runner, "darwin").createClient(
+    await universalSignatureTarget("arm64"),
+  );
+
+  const execution = await client.execute("inspect_signature", {});
+
+  if (!execution.ok) throw execution.error;
+  const { signed, limitations } = execution.value.result as {
+    signed: boolean;
+    limitations: string[];
+  };
+  expect(signed).toBe(false);
+  expect(limitations).toEqual(
+    expect.arrayContaining([
+      "lipo is unavailable, so slice names come from the target's CPU families; variants such as arm64e.x1 are not distinguished.",
+      "Unsigned Mach-O slices: x86_64.",
+      expect.stringMatching(
+        /^Mach-O slices signed although codesign's default slice is unsigned: arm64 /u,
+      ),
+    ]),
+  );
+});
+
+it("compares entitlement integers beyond the exact range by their digits", async () => {
+  const load = (name: string) => fixture(`codesign-universal-signed/${name}`);
+  const plist = (digits: string) =>
+    `<?xml version="1.0" encoding="UTF-8"?><plist version="1.0"><dict><key>com.example.limit</key><integer>${digits}</integer></dict></plist>`;
+  const client = new NativeMacOSProvider(
+    {},
+    sliceRunner({
+      aggregate: await load("aggregate.txt"),
+      requirements: await load("requirements.txt"),
+      // Both literals round to the same JavaScript number.
+      entitlements: plist("9007199254740992"),
+      slices: {
+        x86_64: {
+          display: await load("slice-x86_64.txt"),
+          entitlements: plist("9007199254740993"),
+        },
+        arm64: {
+          display: await load("slice-arm64.txt"),
+          entitlements: plist("9007199254740992"),
+        },
+      },
+    }),
+    "darwin",
+  ).createClient(await signatureTarget("arm64"));
+
+  const execution = await client.execute("inspect_signature", {});
+
+  if (!execution.ok) throw execution.error;
+  const { limitations } = execution.value.result as { limitations: string[] };
+  expect(limitations).toEqual(
+    expect.arrayContaining([
+      expect.stringMatching(
+        /^Mach-O slices signed differently from the arm64 slice: x86_64 \(identifier "com\.example\.x86slice"; hardened runtime off; entitlements "com\.example\.limit": \{"\$plist_type":"integer","decimal":"9007199254740993"\} \(described slice \{"\$plist_type":"integer","decimal":"9007199254740992"\}\)\)\.$/u,
+      ),
+    ]),
+  );
+});
+
+it("treats a cut-off entitlements plist as unavailable, not as none", async () => {
+  const load = (name: string) => fixture(`codesign-universal-signed/${name}`);
+  const client = new NativeMacOSProvider(
+    {},
+    sliceRunner({
+      aggregate: await load("aggregate.txt"),
+      requirements: await load("requirements.txt"),
+      entitlements: await load("entitlements-aggregate.xml"),
+      slices: {
+        x86_64: {
+          display: await load("slice-x86_64.txt"),
+          // An XML header without the closing tag: present, but cut off.
+          entitlements:
+            '<?xml version="1.0" encoding="UTF-8"?><plist version="1.0"><dict><key>com.apple.security.get-task-allow</key><true/>',
+        },
+        arm64: {
+          display: await load("slice-arm64.txt"),
+          entitlements: await load("entitlements-arm64.xml"),
+        },
+      },
+    }),
+    "darwin",
+  ).createClient(await signatureTarget("arm64"));
+
+  const execution = await client.execute("inspect_signature", {});
+
+  if (!execution.ok) throw execution.error;
+  const { limitations } = execution.value.result as { limitations: string[] };
+  expect(limitations).toEqual(
+    expect.arrayContaining([
+      "Entitlements of the x86_64 slice: the entitlements plist is cut off before its closing tag; entitlements are unavailable.",
+      "Entitlements could not be read for Mach-O slices: x86_64.",
+    ]),
+  );
+  expect(limitations.some((text) => text.includes("entitlements none"))).toBe(
+    false,
+  );
+});
+
+it("reports a data entitlement against a dictionary shaped like its wrapper as different", async () => {
+  const load = (name: string) => fixture(`codesign-universal-signed/${name}`);
+  const plist = (body: string) =>
+    `<?xml version="1.0" encoding="UTF-8"?><plist version="1.0"><dict><key>com.example.blob</key>${body}</dict></plist>`;
+  const client = new NativeMacOSProvider(
+    {},
+    sliceRunner({
+      aggregate: await load("aggregate.txt"),
+      requirements: await load("requirements.txt"),
+      // A dictionary shaped exactly like the projection's data wrapper
+      // projects to the same JSON as a real <data> value.
+      entitlements: plist(
+        "<dict><key>$plist_type</key><string>data</string><key>base64</key><string>AQID</string></dict>",
+      ),
+      slices: {
+        x86_64: {
+          display: await load("slice-x86_64.txt"),
+          entitlements: plist("<data>AQID</data>"),
+        },
+        arm64: {
+          display: await load("slice-arm64.txt"),
+          entitlements: plist(
+            "<dict><key>$plist_type</key><string>data</string><key>base64</key><string>AQID</string></dict>",
+          ),
+        },
+      },
+    }),
+    "darwin",
+  ).createClient(await signatureTarget("arm64"));
+
+  const execution = await client.execute("inspect_signature", {});
+
+  if (!execution.ok) throw execution.error;
+  const { limitations } = execution.value.result as { limitations: string[] };
+  expect(limitations).toEqual(
+    expect.arrayContaining([
+      expect.stringMatching(
+        /^Mach-O slices signed differently from the arm64 slice: x86_64 \(identifier "com\.example\.x86slice"; hardened runtime off; entitlements same projected values, but the plist value types differ/u,
+      ),
+    ]),
+  );
+});
+
+it("does not read an echoed file name as the unsigned verdict", async () => {
+  // The snapshot's file name says "not signed at all"; codesign echoes it in
+  // front of a different diagnostic, so the slice must stay unclassified.
+  const directory = await createTestTempDirectory("rea-native-inventory-");
+  const path = join(directory, "not signed at all");
+  await writeFile(
+    path,
+    fatImage(
+      [CPU.x86_64, CPU.arm64].map((cpu) => ({
+        cpu,
+        bytes: machoImage({ cpu }),
+      })),
+    ),
+  );
+  const target = await nativeMachoTargetForFile(path);
+  const aggregate = await fixture("codesign-universal-signed/aggregate.txt");
+  const armDisplay = await fixture("codesign-universal-signed/slice-arm64.txt");
+  const requirements = await fixture(
+    "codesign-universal-signed/requirements.txt",
+  );
+  const entitlements = await fixture(
+    "codesign-universal-signed/entitlements-aggregate.xml",
+  );
+  const runner: NativeCommandRunner = {
+    run(tool: string, arguments_: readonly string[], options) {
+      const architectureIndex = arguments_.indexOf("-a");
+      const architecture =
+        architectureIndex < 0 ? null : arguments_[architectureIndex + 1];
+      const snapshot = arguments_.at(-1) ?? "";
+      const stdout = arguments_.includes("-r-")
+        ? requirements
+        : arguments_.includes("--entitlements")
+          ? entitlements
+          : "";
+      const failing = architecture === "x86_64";
+      const stderr = failing
+        ? `${snapshot}: invalid or unsupported format\n`
+        : stdout === ""
+          ? architecture === "arm64"
+            ? armDisplay
+            : aggregate
+          : "";
+      const exitCode = failing ? 1 : 0;
+      const capture: NativeCommandCapture = {
+        tool,
+        executable: `/usr/bin/${tool}`,
+        executableSha256: "a".repeat(64),
+        toolVersion: null,
+        versionReason: "fixture",
+        arguments: [...arguments_],
+        stdout,
+        stderr,
+        stdoutBytes: Buffer.byteLength(stdout),
+        stderrBytes: Buffer.byteLength(stderr),
+        exitCode,
+        signal: null,
+      };
+      return Promise.resolve(
+        exitCode === 0 || options.acceptNonZero === true
+          ? ok(capture)
+          : err(new NativeCommandFailure(tool, "nonzero-exit", exitCode)),
+      );
+    },
+  };
+  const client = new NativeMacOSProvider({}, runner, "darwin").createClient(
+    target,
+  );
+
+  const execution = await client.execute("inspect_signature", {});
+
+  // A slice query that fails for another reason is a failure that keeps the
+  // facts collected so far; it is never read as the unsigned verdict.
+  expect(execution).toMatchObject({
+    ok: false,
+    error: { _tag: "ProviderAdapterError" },
+  });
+  if (execution.ok) return;
+  const partial = inspectSignatureSchema.parse(
+    execution.error.partialObservation,
+  );
+  expect(partial.limitations).toEqual(
+    expect.arrayContaining([expect.stringContaining("did not complete")]),
+  );
+  expect(
+    partial.limitations.some((text) =>
+      text.startsWith("Unsigned Mach-O slices"),
+    ),
+  ).toBe(false);
+});
+
+it("keeps a non-default slice's undecodable entitlements unobserved", async () => {
+  const load = (name: string) => fixture(`codesign-universal-signed/${name}`);
+  const client = new NativeMacOSProvider(
+    {},
+    sliceRunner({
+      aggregate: await load("aggregate.txt"),
+      requirements: await load("requirements.txt"),
+      entitlements: await load("entitlements-aggregate.xml"),
+      slices: {
+        x86_64: {
+          display: await load("slice-x86_64.txt"),
+          // A plist element that is not closed: present, but not decodable.
+          entitlements:
+            '<?xml version="1.0" encoding="UTF-8"?><plist version="1.0"><dict><key>com.apple.security.get-task-allow</key></plist>',
+        },
+        arm64: {
+          display: await load("slice-arm64.txt"),
+          entitlements: await load("entitlements-arm64.xml"),
+        },
+      },
+    }),
+    "darwin",
+  ).createClient(await signatureTarget("arm64"));
+
+  const execution = await client.execute("inspect_signature", {});
+
+  if (!execution.ok) throw execution.error;
+  const { limitations } = execution.value.result as { limitations: string[] };
+  expect(limitations).toEqual(
+    expect.arrayContaining([
+      expect.stringMatching(
+        /^Entitlements of the x86_64 slice: the entitlements plist could not be decoded/u,
+      ),
+      "Entitlements could not be read for Mach-O slices: x86_64.",
+      // The comparison names what differs and says nothing about entitlements.
+      `Mach-O slices signed differently from the arm64 slice: x86_64 (identifier "com.example.x86slice"; hardened runtime off).`,
+    ]),
+  );
+  expect(limitations.some((text) => text.includes("entitlements none"))).toBe(
+    false,
+  );
+});
+
+it("keeps the result when a non-default slice's entitlements hold data or prototype keys", async () => {
+  const load = (name: string) => fixture(`codesign-universal-signed/${name}`);
+  const dataEntitlements =
+    '<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "https://www.apple.com/DTDs/PropertyList-1.0.dtd"><plist version="1.0"><dict><key>com.apple.security.get-task-allow</key><true/><key>com.example.blob</key><data>AQID</data><key>__proto__</key><true/></dict></plist>';
+  const client = new NativeMacOSProvider(
+    {},
+    sliceRunner({
+      aggregate: await load("aggregate.txt"),
+      requirements: await load("requirements.txt"),
+      entitlements: await load("entitlements-aggregate.xml"),
+      slices: {
+        x86_64: {
+          display: await load("slice-x86_64.txt"),
+          entitlements: dataEntitlements,
+        },
+        arm64: {
+          display: await load("slice-arm64.txt"),
+          entitlements: await load("entitlements-arm64.xml"),
+        },
+      },
+    }),
+    "darwin",
+  ).createClient(await signatureTarget("arm64"));
+
+  const execution = await client.execute("inspect_signature", {});
+
+  if (!execution.ok) throw execution.error;
+  const { limitations } = execution.value.result as { limitations: string[] };
+  expect(limitations).toEqual(
+    expect.arrayContaining([
+      expect.stringMatching(
+        /^Entitlements of the x86_64 slice: .*__proto__.*$/u,
+      ),
+      'Mach-O slices signed differently from the arm64 slice: x86_64 (identifier "com.example.x86slice"; hardened runtime off; entitlements "com.apple.security.cs.disable-library-validation" absent, "com.apple.security.get-task-allow": true, "com.example.blob": {"$plist_type":"data","base64":"AQID"}).',
+    ]),
+  );
+});
+
+it("adds no slice note for a signed thin Mach-O", async () => {
+  // codesign reports a thin format, so no slice is queried even though the
+  // target lists two architectures; sliceRunner rejects any `-a` query.
+  const client = new NativeMacOSProvider(
+    {},
+    sliceRunner({
+      aggregate: await fixture("codesign.txt"),
+      requirements: '# designated => identifier "com.example.fixture"\n',
+      entitlements: await fixture("entitlements.xml"),
+      slices: {},
+    }),
+    "darwin",
+  ).createClient(
+    await nativeMachoTargetForFile(
+      await (async () => {
+        const path = join(
+          await createTestTempDirectory("rea-native-inventory-"),
+          "thin",
+        );
+        await writeFile(path, machoImage({ cpu: CPU.arm64 }));
+        return path;
+      })(),
+    ),
+  );
+
+  const execution = await client.execute("inspect_signature", {});
+
+  if (!execution.ok) throw execution.error;
+  const result = execution.value.result as {
+    limitations: string[];
+    provenance: { command: string[] }[];
+  };
+  expect(result.limitations.some((text) => /slice/iu.test(text))).toBe(false);
+  expect(result.provenance).toHaveLength(3);
 });
 
 it("rejects nonzero supplemental codesign output that is not an unsigned observation", async () => {
@@ -492,6 +1095,48 @@ Section
     file_offset: 16384,
     sections: [{ segment: "0001", name: "0002", size: 8 }],
   });
+});
+
+/** Answer codesign per slice: `-a <arch>` selects that slice's captures. */
+const sliceRunner = (outputs: {
+  readonly aggregate: string;
+  readonly requirements: string;
+  readonly entitlements: string;
+  readonly slices: Readonly<
+    Record<string, { readonly display: string; readonly entitlements: string }>
+  >;
+}): NativeCommandRunner => ({
+  run(tool: string, arguments_: readonly string[]) {
+    const architectureIndex = arguments_.indexOf("-a");
+    const slice =
+      architectureIndex < 0
+        ? undefined
+        : outputs.slices[arguments_[architectureIndex + 1] ?? ""];
+    if (architectureIndex >= 0 && slice === undefined)
+      throw new Error(`unexpected slice query: ${arguments_.join(" ")}`);
+    const stdout = arguments_.includes("-r-")
+      ? outputs.requirements
+      : arguments_.includes("--entitlements")
+        ? (slice?.entitlements ?? outputs.entitlements)
+        : "";
+    const stderr = stdout === "" ? (slice?.display ?? outputs.aggregate) : "";
+    return Promise.resolve(
+      ok({
+        tool,
+        executable: `/usr/bin/${tool}`,
+        executableSha256: "a".repeat(64),
+        toolVersion: null,
+        versionReason: "fixture",
+        arguments: [...arguments_],
+        stdout,
+        stderr,
+        stdoutBytes: Buffer.byteLength(stdout),
+        stderrBytes: Buffer.byteLength(stderr),
+        exitCode: 0,
+        signal: null,
+      } satisfies NativeCommandCapture),
+    );
+  },
 });
 
 const signatureRunner = (outputs: {

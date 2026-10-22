@@ -1,0 +1,25 @@
+Executable=/private/fixture
+Identifier=com.example.x86slice
+Format=Mach-O thin (x86_64)
+CodeDirectory v=20400 size=397 flags=0x2(adhoc) hashes=2+7 location=embedded
+VersionPlatform=1
+VersionMin=1769472
+VersionSDK=1769472
+Hash type=sha256 size=32
+CandidateCDHash sha256=269615ed3412eb7a8c0945e51c76355412db4b12
+CandidateCDHashFull sha256=269615ed3412eb7a8c0945e51c76355412db4b121bb2cf6fbf4d99f20cd007e5
+Hash choices=sha256
+CMSDigest=269615ed3412eb7a8c0945e51c76355412db4b121bb2cf6fbf4d99f20cd007e5
+CMSDigestType=2
+Executable Segment base=0
+Executable Segment limit=4096
+Executable Segment flags=0x1
+Page size=4096
+CDHash=269615ed3412eb7a8c0945e51c76355412db4b12
+Signature=adhoc
+Info.plist=not bound
+TeamIdentifier=not set
+Sealed Resources=none
+Internal requirements count=0 size=12
+Total signatures=1
+Chosen signature=1

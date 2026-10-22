@@ -1,0 +1,26 @@
+Executable=/private/fixture
+Identifier=com.example.armslice
+Format=Mach-O thin (arm64)
+CodeDirectory v=20500 size=405 flags=0x10002(adhoc,runtime) hashes=2+7 location=embedded
+VersionPlatform=1
+VersionMin=1769472
+VersionSDK=1769472
+Hash type=sha256 size=32
+CandidateCDHash sha256=133d589374281103e27b32ee243781884bc41413
+CandidateCDHashFull sha256=133d589374281103e27b32ee243781884bc41413f56dd6995421f2db6beb8dd8
+Hash choices=sha256
+CMSDigest=133d589374281103e27b32ee243781884bc41413f56dd6995421f2db6beb8dd8
+CMSDigestType=2
+Executable Segment base=0
+Executable Segment limit=16384
+Executable Segment flags=0x1
+Page size=16384
+CDHash=133d589374281103e27b32ee243781884bc41413
+Signature=adhoc
+Info.plist=not bound
+TeamIdentifier=not set
+Runtime Version=27.0.0
+Sealed Resources=none
+Internal requirements count=0 size=12
+Total signatures=1
+Chosen signature=1

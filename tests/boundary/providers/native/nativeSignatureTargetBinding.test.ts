@@ -627,11 +627,17 @@ it.skipIf(process.platform !== "darwin")(
       signed: true,
       identifier: "rea.original",
     });
-    expect(
-      inspectSignatureSchema
-        .parse(result.value.result)
-        .provenance.map(({ command }) => command.at(-1)),
-    ).toEqual(["$ARTIFACT", "$ARTIFACT", "$ARTIFACT"]);
+    // /usr/bin/true is universal, so the three aggregate queries are followed
+    // by one display query per slice and an entitlements query for each slice
+    // the aggregate display did not describe. Every one reads the snapshot.
+    const commands = inspectSignatureSchema
+      .parse(result.value.result)
+      .provenance.map(({ command }) => command);
+    expect(commands.length).toBeGreaterThanOrEqual(3);
+    expect(commands.map((command) => command.at(-1))).toEqual(
+      commands.map(() => "$ARTIFACT"),
+    );
+    expect(commands.some((command) => command.includes("-a"))).toBe(true);
     if (capturedPath === undefined)
       throw new Error("Expected codesign invocation");
     await expect(lstat(dirname(capturedPath))).rejects.toMatchObject({

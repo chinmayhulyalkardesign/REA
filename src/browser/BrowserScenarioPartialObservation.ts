@@ -1,12 +1,16 @@
 import type { BrowserScenario } from "../domain/browserScenario.js";
 import { PLAYWRIGHT_RESPONSE_BODY_PROVENANCE_LIMITATION } from "../domain/browserNetworkEvidence.js";
-import type {
-  BrowserScenarioCaptureData,
-  BrowserScenarioPartialObservation,
+import {
+  browserScenarioCaptureSchema,
+  type BrowserScenarioCapture,
+  type BrowserScenarioCaptureData,
+  type BrowserScenarioPartialObservation,
 } from "../domain/browserScenarioCapture.js";
-import type {
-  BrowserScenarioEvent,
-  BrowserScenarioStep,
+import {
+  classifyBrowserScenarioCompleteness,
+  type BrowserScenarioCompleteness,
+  type BrowserScenarioEvent,
+  type BrowserScenarioStep,
 } from "../domain/browserScenarioCaptureValues.js";
 import type { BrowserScenarioSessionPort } from "./BrowserScenarioSessionPort.js";
 import { AnalysisError } from "../domain/analysisErrorBase.js";
@@ -103,6 +107,47 @@ export const browserScenarioCaptureData = (input: {
     ],
   };
 };
+
+/** Classify whole-capture completeness from step sections and session gaps. */
+export const browserScenarioGlobalCompleteness = (
+  session: BrowserScenarioSessionPort,
+  steps: readonly BrowserScenarioStep[],
+): BrowserScenarioCompleteness => {
+  const missing = steps.flatMap(
+    ({ completeness }) => completeness.missing_sections,
+  );
+  const truncated = steps.flatMap(
+    ({ completeness }) => completeness.truncated_sections,
+  );
+  if (session.mode === "connect") missing.push("events");
+  if ((session.eventLimitations?.().length ?? 0) > 0) missing.push("events");
+  return classifyBrowserScenarioCompleteness(missing, truncated);
+};
+
+/** Build the completed capture returned when cleanup cannot be confirmed. */
+export const completedCaptureWithIncompleteCleanup = (input: {
+  readonly session: BrowserScenarioSessionPort;
+  readonly scenario: BrowserScenario;
+  readonly startedAt: number;
+  readonly steps: readonly BrowserScenarioStep[];
+  readonly cleanup: {
+    readonly reason: string;
+    readonly resources: readonly string[];
+  };
+}): BrowserScenarioCapture =>
+  browserScenarioCaptureSchema.parse({
+    ...browserScenarioCaptureData({
+      session: input.session,
+      scenario: input.scenario,
+      startedAt: input.startedAt,
+      steps: input.steps,
+      cleanup: "incomplete",
+      limitations: [
+        `Browser cleanup could not be confirmed: ${input.cleanup.reason}. Reported resources may remain: ${input.cleanup.resources.join(", ")}.`,
+      ],
+    }),
+    completeness: browserScenarioGlobalCompleteness(input.session, input.steps),
+  });
 
 /** Describe the cleanup failure without discarding its resource evidence. */
 export const browserScenarioCleanupObservation = (

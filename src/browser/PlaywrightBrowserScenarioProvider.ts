@@ -48,8 +48,10 @@ import {
 } from "./ScenarioActionSequence.js";
 import {
   browserScenarioCleanupObservation,
+  browserScenarioGlobalCompleteness,
   browserScenarioOperationFailure,
   browserScenarioCaptureData,
+  completedCaptureWithIncompleteCleanup,
 } from "./BrowserScenarioPartialObservation.js";
 
 const OPERATION = "capture_browser_scenario" as const;
@@ -229,22 +231,6 @@ const executeStep = async (input: {
   });
 };
 
-const globalCompleteness = (
-  scenario: BrowserScenario,
-  session: BrowserScenarioSessionPort,
-  steps: readonly BrowserScenarioStep[],
-): BrowserScenarioCompleteness => {
-  const missing = steps.flatMap(
-    ({ completeness }) => completeness.missing_sections,
-  );
-  const truncated = steps.flatMap(
-    ({ completeness }) => completeness.truncated_sections,
-  );
-  if (session.mode === "connect") missing.push("events");
-  if ((session.eventLimitations?.().length ?? 0) > 0) missing.push("events");
-  return classifyBrowserScenarioCompleteness(missing, truncated);
-};
-
 const runScenario = async (
   openSession: BrowserScenarioSessionOpener,
   scenario: BrowserScenario,
@@ -339,6 +325,16 @@ const runScenario = async (
         partialObservation,
         { cause: cleanupOutcome.cause },
       );
+    // Every action completed: return the completed capture with cleanup
+    // unconfirmed; the lease above stays retained for the reported resources.
+    if (steps.every(({ status }) => status === "completed"))
+      return completedCaptureWithIncompleteCleanup({
+        session,
+        scenario,
+        startedAt,
+        steps,
+        cleanup,
+      });
     const failure = new BrowserObservationError(OPERATION, "cleanup_failed", {
       cause: cleanupOutcome.cause,
       cleanup,
@@ -366,7 +362,7 @@ const runScenario = async (
         ],
       }),
     });
-  const completeness = globalCompleteness(scenario, session, steps);
+  const completeness = browserScenarioGlobalCompleteness(session, steps);
   const capture = browserScenarioCaptureSchema.parse({
     ...browserScenarioCaptureData({
       session,

@@ -259,6 +259,13 @@ export const addJavaScriptArtifactFiles = (
           ? "JavaScript syntax could not be parsed."
           : `JavaScript text was unavailable: ${file.text.reason}.`,
       });
+    else if (file.kind === "html" && !file.text.included)
+      addUnavailableStaticParseScope(context, {
+        file,
+        asset: target,
+        ...javascriptArtifactAnalysisScopes.html,
+        limitation: `HTML text was unavailable: ${file.text.reason}.`,
+      });
     if (analyzed.application_projection_failure !== undefined)
       addUnavailableStaticParseScope(context, {
         file,

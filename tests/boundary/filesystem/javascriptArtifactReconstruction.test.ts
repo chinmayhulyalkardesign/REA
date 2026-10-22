@@ -120,6 +120,57 @@ it("keeps malformed JavaScript, package metadata, and source maps as explicit un
   }
 });
 
+it("keeps undecodable HTML script-reference discovery as an explicit unknown", async () => {
+  const root = await createTestTempDirectory("rea-javascript-invalid-html-");
+  await Promise.all([
+    writeFile(
+      join(root, "package.json"),
+      '{"name":"example","main":"main.js"}',
+    ),
+    writeFile(join(root, "main.js"), 'console.log("example");'),
+    writeFile(
+      join(root, "index.html"),
+      Buffer.concat([
+        Buffer.from('<script src="main.js"></script>'),
+        Buffer.from([0xff]),
+      ]),
+    ),
+  ]);
+
+  const result = await reconstructJavaScriptArtifact({ input_path: root });
+  const inventory = result.graph.nodes
+    .flatMap(({ observations }) => observations)
+    .find(({ properties }) => properties.path === "index.html");
+  const gaps = result.graph.nodes
+    .filter(({ kind }) => kind === "unknown")
+    .flatMap(({ observations }) => observations)
+    .filter(({ properties }) => properties.path === "index.html");
+
+  expect(inventory?.properties).toMatchObject({
+    text_status: "invalid-utf8",
+    parse_status: null,
+  });
+  expect(result.graph.coverage.status).toBe("partial");
+  expect(gaps).toHaveLength(1);
+  expect(gaps[0]).toMatchObject({
+    properties: {
+      operation: "parse-html-script-references",
+      limitation: "HTML text was unavailable: invalid-utf8.",
+    },
+    evidence: {
+      authority: "artifact-bytes",
+      state: "unavailable",
+      confidence: "unknown",
+    },
+  });
+  expect(
+    result.graph.edges.filter(
+      ({ relation, properties }) =>
+        relation === "loads" && properties.script_path !== undefined,
+    ),
+  ).toEqual([]);
+});
+
 it("retains every source declared by every included local source map", async () => {
   const root = await createTestTempDirectory("rea-javascript-source-maps-");
   await Promise.all([

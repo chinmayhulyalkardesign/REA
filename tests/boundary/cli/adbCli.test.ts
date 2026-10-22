@@ -83,6 +83,88 @@ exit 1
   expect(await readFile(workspace.path("calls"), "utf8")).toBe("\nshell\n");
 });
 
+it.skipIf(process.platform === "win32").each([
+  ["offline-probe", "error: device offline", "probe"],
+  ["offline-push", "error: device offline", "push"],
+  ["unauthorized-probe", "unauthorized", "probe"],
+  ["unauthorized-push", "unauthorized", "push"],
+] as const)(
+  "identifies the serial for the %s push device state refusal",
+  async (name, diagnostic, stage) => {
+    const workspace = await createTestWorkspace("rea-adb-push-state-cli-");
+    onTestFinished(() => removeTestWorkspace(workspace.root));
+    const source = await workspace.write("payload.bin", "replacement");
+    const adb = await workspace.write(
+      "adb",
+      `#!/bin/sh
+root=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+printf '%s\\n' "$3" >> "$root/calls"
+if [ "$1" = version ]; then
+  printf 'Android Debug Bridge version 1.0.41\\nVersion 34.0.5-cli\\nInstalled as %s\\n' "$0"
+  exit 0
+fi
+if [ "$3" = shell ] && [ "$4" = test ]; then
+  if [ "$REA_STAGE" = probe ]; then
+    printf '%s\\n' "$REA_DIAGNOSTIC" >&2
+    exit 1
+  fi
+  exit 1
+fi
+if [ "$3" = push ]; then
+  printf '%s\\n' "$REA_DIAGNOSTIC" >&2
+  exit 1
+fi
+exit 1
+`,
+    );
+    await chmod(adb, 0o755);
+    const result = await execFileOutput(
+      process.execPath,
+      [
+        "scripts/rea.mjs",
+        "push-adb-file",
+        "probe-device",
+        source,
+        "/sdcard/rea-repro/sample.bin",
+        "--json",
+      ],
+      {
+        env: {
+          ...process.env,
+          REA_ADB_PATH: adb,
+          REA_STAGE: stage,
+          REA_DIAGNOSTIC: diagnostic,
+        },
+        timeout: 20_000,
+        stopSignal: "SIGTERM",
+        maxBuffer: 1024 * 1024,
+      },
+    ).then(
+      (output) => ({ exitCode: 0, stdout: output.stdout }),
+      (cause: unknown) => {
+        const failure = execFileOutputFailure(cause);
+        if (failure === undefined) throw cause;
+        return { exitCode: failure.code, stdout: failure.stdout };
+      },
+    );
+    expect(result.exitCode).toBe(1);
+    const refusal = JSON.parse(result.stdout) as {
+      code: string;
+      message: string;
+      details: { operation: string; path: string; reason: string };
+    };
+    expect(refusal.code).toBe("unsupported_target");
+    expect(refusal.details.operation).toBe("push_adb_file");
+    expect(refusal.details.path).toBe("probe-device");
+    expect(refusal.details.reason).toBe(diagnostic);
+    expect(refusal.message).toContain("at probe-device");
+    const calls = (await readFile(workspace.path("calls"), "utf8"))
+      .split("\n")
+      .filter((line) => line !== "");
+    expect(calls).toEqual(stage === "probe" ? ["shell"] : ["shell", "push"]);
+  },
+);
+
 it.each([
   [
     ["inspect-adb-client", "--json"],

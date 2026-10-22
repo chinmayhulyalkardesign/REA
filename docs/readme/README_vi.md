@@ -66,6 +66,8 @@ Quá trình thiết lập đăng ký REA với tác nhân và cài đặt các h
 
 ## Bắt đầu nhanh
 
+Trên Linux, Ghidra, JADX, việc khởi chạy công cụ firmware và phân tích tĩnh JavaScript/Electron cần một `ps` tương thích procps trong `PATH` của REA để kiểm tra quyền sở hữu tiến trình. Các bước khắc phục có trong `docs/installation.md`, mục "Linux owned-process prerequisite".
+
 ### Thiết lập tác nhân
 
 Sau khi cài Node.js và npm, chạy:
@@ -148,7 +150,7 @@ REA yêu cầu Node.js 22.x (>=22.19), 24.x (>=24.11) hoặc 26+, cùng với np
 | ELF notes                         | PT_NOTE/SHT_NOTE owners, types, GNU build-id and ABI-tag fields                                                 | Built-in static ELF inspection; [ELF notes](../elf-notes.md)                                                                              |
 | Sự cố Linux đã ghi lại            | Bản ghi note thô, thanh ghi/tín hiệu của mọi luồng được ghi lại và các ứng viên ánh xạ tùy chọn                 | pwntools do bên gọi cung cấp trên Linux x64; GDB/pwndbg tùy chọn; [sự cố đã ghi lại](../recorded-crashes.md)                              |
 | Thư mục cài đặt ứng dụng máy tính | Các runtime có khả năng được dùng, tệp bằng chứng, dấu hiệu thành phần và bước tiếp theo                        | Kiểm tra thư mục và phần đầu tệp có giới hạn；[Ứng dụng máy tính](../desktop-applications.md)                                             |
-| JavaScript / Electron             | Mô-đun, các khai báo import, source map, tuyến, IPC và quan hệ với tiện ích mở rộng mã máy                      | Node.js và npm; [phân tích ứng dụng](../javascript-application-workflows.md)                                                              |
+| JavaScript / Electron             | Mô-đun, các khai báo import, source map, tuyến, IPC và quan hệ với tiện ích mở rộng mã máy                      | Node.js và npm; Linux: `ps` tương thích procps; [phân tích ứng dụng](../javascript-application-workflows.md)                              |
 | Trang web                         | Cấu trúc trang, script, quan sát mạng và ảnh chụp màn hình được yêu cầu                                         | Trình duyệt thuộc họ Chrome; [phân tích trình duyệt](../browser-observation.md)                                                           |
 | Bản ghi lưu lượng mạng đã lưu     | Yêu cầu, phản hồi, payload có thể truy cập và vị trí nguồn                                                      | HAR; mitmdump trên Linux cho bản ghi định dạng gốc của mitmproxy; [hướng dẫn bản ghi mạng](../web-network-captures.md)                    |
 | Bắt gói tin                       | Điểm cuối, DNS, TLS SNI, phân bố giao thức và yêu cầu HTTP                                                      | tshark và capinfos do nơi gọi cung cấp; [hướng dẫn pcap](../pcap-analysis.md)                                                             |

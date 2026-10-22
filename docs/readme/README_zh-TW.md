@@ -66,6 +66,8 @@ REA 將 AI 代理連接到分析工具，用於檢查原生二進位檔案、Jav
 
 ## 快速開始
 
+在 Linux 上，Ghidra、JADX、韌體工具啟動以及 JavaScript/Electron 靜態分析需要 REA 的 `PATH` 中有相容 procps 的 `ps`，以進行程序擁有權檢查。復原步驟請見 `docs/installation.md` 中的「Linux owned-process prerequisite」。
+
 ### 設定 AI 代理
 
 安裝 Node.js 和 npm 後，執行：
@@ -152,7 +154,7 @@ REA 需要 Node.js 22.x（>=22.19）、24.x（>=24.11）或 26+，以及 npm。�
 | ELF notes             | PT_NOTE/SHT_NOTE owners, types, GNU build-id and ABI-tag fields | Built-in static ELF inspection; [ELF notes](../elf-notes.md)                                                       |
 | 已記錄的 Linux 崩潰   | 原始 note 記錄、每個已記錄執行緒的暫存器/訊號及可選的對映候選項 | Linux x64 上由呼叫方提供的 pwntools；可選的 GDB/pwndbg；[已記錄崩潰](../recorded-crashes.md)                       |
 | 桌面安裝目錄          | 執行階段候選、支持檔案、元件標記與後續操作                      | 有界的目錄與檔頭檢查；[桌面應用](../desktop-applications.md)                                                       |
-| JavaScript / Electron | 模組、匯入、source map、路由、IPC 和原生附加元件關係            | Node.js 和 npm；[應用分析](../javascript-application-workflows.md)                                                 |
+| JavaScript / Electron | 模組、匯入、source map、路由、IPC 和原生附加元件關係            | Node.js 和 npm；Linux：相容 procps 的 `ps`；[應用分析](../javascript-application-workflows.md)                     |
 | 網站                  | 頁面結構、腳本、網路觀察結果和按請求獲取的螢幕擷取畫面          | Chrome 系瀏覽器；[瀏覽器分析](../browser-observation.md)                                                           |
 | 已保存的網路擷取      | 請求、回應、可訪問的酬載和來源位置                              | HAR；原生 mitmproxy 擷取需要 Linux 上的 mitmdump；[擷取指南](../web-network-captures.md)                           |
 | 封包擷取              | 端點、DNS、TLS SNI、通訊協定分佈和 HTTP 請求                    | 呼叫端提供的 tshark 和 capinfos；[pcap 指南](../pcap-analysis.md)                                                  |

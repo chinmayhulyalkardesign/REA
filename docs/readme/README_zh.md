@@ -66,6 +66,8 @@ REA 将智能体连接到分析工具，用于检查原生二进制文件、Java
 
 ## 快速开始
 
+在 Linux 上，Ghidra、JADX、固件工具启动以及 JavaScript/Electron 静态分析需要 REA 的 `PATH` 中有兼容 procps 的 `ps`，用于进程所有权检查。恢复步骤见 `docs/installation.md` 中的“Linux owned-process prerequisite”。
+
 ### 设置智能体
 
 安装 Node.js 和 npm 后，运行：
@@ -152,7 +154,7 @@ REA 需要 Node.js 22.x（>=22.19）、24.x（>=24.11）或 26+，以及 npm。�
 | ELF notes             | PT_NOTE/SHT_NOTE owners, types, GNU build-id and ABI-tag fields | Built-in static ELF inspection; [ELF notes](../elf-notes.md)                                                       |
 | 已记录的 Linux 崩溃   | 原始 note 记录、每个已记录线程的寄存器/信号及可选的映射候选项   | Linux x64 上由调用方提供的 pwntools；可选的 GDB/pwndbg；[已记录崩溃](../recorded-crashes.md)                       |
 | 桌面安装目录          | 运行时候选、支持文件、组件标记和后续操作                        | 有界的目录与文件头检查；[桌面应用](../desktop-applications.md)                                                     |
-| JavaScript / Electron | 模块、导入、source map、路由、IPC 和原生扩展关系                | Node.js 和 npm；[应用分析](../javascript-application-workflows.md)                                                 |
+| JavaScript / Electron | 模块、导入、source map、路由、IPC 和原生扩展关系                | Node.js 和 npm；Linux：兼容 procps 的 `ps`；[应用分析](../javascript-application-workflows.md)                     |
 | 网站                  | 页面结构、脚本、网络观察结果和按请求获取的截图                  | Chrome 系浏览器；[浏览器分析](../browser-observation.md)                                                           |
 | 已保存的网络捕获      | 请求、响应、可访问的载荷和来源位置                              | HAR；原生 mitmproxy 捕获需要 Linux 上的 mitmdump；[捕获指南](../web-network-captures.md)                           |
 | 数据包捕获            | 端点、DNS、TLS SNI、协议分布和 HTTP 请求                        | 调用方提供的 tshark 和 capinfos；[pcap 指南](../pcap-analysis.md)                                                  |

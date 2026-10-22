@@ -66,6 +66,8 @@ La configurazione registra REA con il tuo agente e installa le istruzioni di wor
 
 ## Avvio rapido
 
+Su Linux, Ghidra, JADX, l'avvio degli strumenti firmware e l'analisi statica JavaScript/Electron richiedono un `ps` compatibile con procps nel `PATH` di REA per verificare la proprietà dei processi. I passaggi di ripristino si trovano in `docs/installation.md`, nella sezione "Linux owned-process prerequisite".
+
 ### Configura il tuo agente
 
 Con Node.js e npm installati, esegui:
@@ -152,7 +154,7 @@ REA richiede Node.js 22.x (>=22.19), 24.x (>=24.11) o 26+, oltre a npm. Strument
 | ELF notes                    | PT_NOTE/SHT_NOTE owners, types, GNU build-id and ABI-tag fields                                   | Built-in static ELF inspection; [ELF notes](../elf-notes.md)                                                                    |
 | Crash Linux registrati       | Note grezze, registri/segnai di ogni thread registrato e candidati mapping opzionali              | pwntools fornito dal chiamante; GDB/pwndbg opzionale; [crash registrati](../recorded-crashes.md)                                |
 | Installazioni desktop        | Runtime candidati, file di supporto, componenti e passi successivi                                | Ispezione limitata di directory e intestazioni；[Applicazioni desktop](../desktop-applications.md)                              |
-| JavaScript / Electron        | Moduli, import, source map, route, IPC e relazioni con add-on nativi                              | Node.js e npm; [analisi delle applicazioni](../javascript-application-workflows.md)                                             |
+| JavaScript / Electron        | Moduli, import, source map, route, IPC e relazioni con add-on nativi                              | Node.js e npm; Linux: `ps` compatibile con procps; [analisi delle applicazioni](../javascript-application-workflows.md)         |
 | Siti web                     | Struttura della pagina, script, osservazioni di rete e screenshot richiesti                       | Un browser della famiglia Chrome; [analisi browser](../browser-observation.md)                                                  |
 | Acquisizioni di rete salvate | Richieste, risposte, payload esposti e posizioni sorgente                                         | HAR; mitmdump su Linux per acquisizioni mitmproxy native; [guida alle acquisizioni](../web-network-captures.md)                 |
 | Captured di pacchetti        | Endpoint, DNS, TLS SNI, distribuzione dei protocolli e richieste HTTP                             | tshark e capinfos forniti dal chiamante; [guida pcap](../pcap-analysis.md)                                                      |

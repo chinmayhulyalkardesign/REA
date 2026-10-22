@@ -224,3 +224,40 @@ cliTest(
     });
   },
 );
+
+cliTest(
+  "reports unselected-source limitations only when sources remain outside analysis scope",
+  { timeout: 60_000 },
+  async ({ cli }) => {
+    const directory = await createTestTempDirectory("rea-js-select-every-");
+    await writeFile(
+      join(directory, "main.mjs"),
+      'import { value } from "./util.mjs"; export const answer = value + 1;\n',
+    );
+    await writeFile(join(directory, "util.mjs"), "export const value = 41;\n");
+    const limitation =
+      "relationships through unselected sources remain unknown";
+    for (const [sources, expected] of [
+      [["main.mjs", "util.mjs"], 0],
+      [["main.mjs"], 1],
+    ] as const) {
+      const response = await cli.run({
+        arguments: [
+          "analyze-javascript-application",
+          directory,
+          ...sources.flatMap((path) => ["--source-path", path]),
+          "--format",
+          "json",
+        ],
+      });
+      expect(response.exitCode).toBe(0);
+      const result = javascriptApplicationAnalysisResultSchema.parse(
+        parseEvidence(response.json).normalized_result,
+      );
+      expect(result.source_selection?.unselected_files).toBe(expected);
+      expect(JSON.stringify(response.json).includes(limitation)).toBe(
+        expected > 0,
+      );
+    }
+  },
+);

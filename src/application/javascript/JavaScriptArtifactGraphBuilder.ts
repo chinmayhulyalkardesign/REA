@@ -331,7 +331,8 @@ const graphLimitations = (
   );
   return [
     ...context.analysis.limitations,
-    ...(context.fileSet.source_selection === undefined
+    ...(context.fileSet.source_selection === undefined ||
+    context.fileSet.source_selection.unselected_files === 0
       ? []
       : [
           `Caller-selected source analysis leaves ${String(context.fileSet.source_selection.unselected_files)} inventoried files outside analysis scope. Inventory identity covers the complete artifact; relationships through unselected sources remain unknown.`,

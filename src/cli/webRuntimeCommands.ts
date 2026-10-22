@@ -1,9 +1,9 @@
 import { Cli, z } from "incur";
+import { observeWebExecutionInputSchema } from "../domain/webExecution.js";
 import { createWebRuntimeService } from "../composition/webRuntime.js";
 import { browserCliError } from "../cliBrowserContext.js";
 import {
   browserScopeOptions,
-  observationDuration,
   selectedCommandTimeout,
 } from "../cliObservationOptions.js";
 import { logCliCommand } from "../cliLogging.js";
@@ -36,7 +36,7 @@ export const registerWebRuntimeCommands = (
     }),
     options: z.object({
       ...browserScopeOptions,
-      observationMs: observationDuration(10_000, 1),
+      observationMs: observeWebExecutionInputSchema.shape.observation_ms,
     }),
     run: ({ args, options }) =>
       withCommandCancellation((signal) =>

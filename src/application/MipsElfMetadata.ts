@@ -17,6 +17,63 @@ import {
 
 const SHT_GNU_ATTRIBUTES = 0x6ffffff5;
 
+/**
+ * Prefix of the one limitation this inspection records: the optional section
+ * header table extends past the captured file, so ABI declarations in its
+ * unread headers stay unknown. Admission logic distinguishes this carved-file
+ * shape from other unavailable declaration sources by this prefix.
+ */
+export const MIPS_SECTION_TABLE_TRUNCATION_PREFIX =
+  "MIPS section header table at file offset ";
+
+/** The fixed and table declarations one ELF32 MIPS file can carry. */
+interface MipsDeclarationTable {
+  readonly label: string;
+  readonly limitationPrefix: string;
+  readonly offset: number;
+  readonly count: number;
+  readonly stride: number;
+  readonly entrySize: number;
+  readonly typeOffset: number;
+  readonly dataOffset: number;
+  readonly sizeOffset: number;
+  readonly recordType: number;
+  readonly optional: boolean;
+}
+
+/** Read both declaration-table coordinates from the fixed ELF32 header. */
+const mipsDeclarationTables = (
+  u32: (offset: number) => number,
+  u16: (offset: number) => number,
+): readonly [MipsDeclarationTable, MipsDeclarationTable] => [
+  {
+    label: "program header table",
+    limitationPrefix: "MIPS program header table at file offset ",
+    offset: u32(28),
+    count: u16(44),
+    stride: u16(42),
+    entrySize: 32,
+    typeOffset: 0,
+    dataOffset: 4,
+    sizeOffset: 16,
+    recordType: 0x70000003, // PT_MIPS_ABIFLAGS
+    optional: false,
+  },
+  {
+    label: "section header table",
+    limitationPrefix: MIPS_SECTION_TABLE_TRUNCATION_PREFIX,
+    offset: u32(32),
+    count: u16(48),
+    stride: u16(46),
+    entrySize: 40,
+    typeOffset: 4,
+    dataOffset: 16,
+    sizeOffset: 20,
+    recordType: 0x7000002a, // SHT_MIPS_ABIFLAGS
+    optional: true,
+  },
+];
+
 /** Observed ABI and load declarations, retaining unavailable source coverage. */
 export interface MipsElfInspection {
   readonly abiFlags: MipsAbiFlags | null;
@@ -26,21 +83,14 @@ export interface MipsElfInspection {
 }
 
 /**
- * Read ELF32 MIPS ABI and shared-load declarations from the caller's already-open file.
- * Inspect both typed tables (not section names), including records beyond the
- * initial header probe. A missing record is unknown, not a default FP ABI.
+ * Build the bounded whole-region reader used for every declaration source.
  * The caller supplies its cancellation check so its tagged error is preserved.
  */
-export const readMipsElfMetadata = async (
+const createMipsRegionReader = (
   handle: FileHandle,
-  metadata: MipsElfMetadata,
+  fileSize: number,
   checkCancelled: () => void,
-): Promise<Result<MipsElfInspection, string>> => {
-  checkCancelled();
-  if (metadata.elfClass !== 32)
-    return err("MIPS ABI record inspection currently supports ELF32 only");
-  const fileSize = (await handle.stat()).size;
-  checkCancelled();
+) => {
   const read = async (
     offset: number,
     length: number,
@@ -70,6 +120,26 @@ export const readMipsElfMetadata = async (
     }
     return ok(bytes);
   };
+  return read;
+};
+
+/**
+ * Read ELF32 MIPS ABI and shared-load declarations from the caller's already-open file.
+ * Inspect both typed tables (not section names), including records beyond the
+ * initial header probe. A missing record is unknown, not a default FP ABI.
+ * The caller supplies its cancellation check so its tagged error is preserved.
+ */
+export const readMipsElfMetadata = async (
+  handle: FileHandle,
+  metadata: MipsElfMetadata,
+  checkCancelled: () => void,
+): Promise<Result<MipsElfInspection, string>> => {
+  checkCancelled();
+  if (metadata.elfClass !== 32)
+    return err("MIPS ABI record inspection currently supports ELF32 only");
+  const fileSize = (await handle.stat()).size;
+  checkCancelled();
+  const read = createMipsRegionReader(handle, fileSize, checkCancelled);
   const header = await read(0, 52, "ELF32 header");
   if (!header.ok) return header;
   const bytes = header.value;
@@ -91,32 +161,10 @@ export const readMipsElfMetadata = async (
   if (fixedHeader.value.headerSize !== 52)
     return err("invalid MIPS ELF32 version or header size");
 
-  const tables = [
-    {
-      label: "program header table",
-      offset: u32(bytes, 28),
-      count: u16(bytes, 44),
-      stride: u16(bytes, 42),
-      entrySize: 32,
-      typeOffset: 0,
-      dataOffset: 4,
-      sizeOffset: 16,
-      recordType: 0x70000003, // PT_MIPS_ABIFLAGS
-      optional: false,
-    },
-    {
-      label: "section header table",
-      offset: u32(bytes, 32),
-      count: u16(bytes, 48),
-      stride: u16(bytes, 46),
-      entrySize: 40,
-      typeOffset: 4,
-      dataOffset: 16,
-      sizeOffset: 20,
-      recordType: 0x7000002a, // SHT_MIPS_ABIFLAGS
-      optional: true,
-    },
-  ];
+  const tables = mipsDeclarationTables(
+    (offset: number) => u32(bytes, offset),
+    (offset: number) => u16(bytes, offset),
+  );
   // Extended numbering needs a separate section-zero reader. Refuse it rather
   // than silently treating an unexamined table as having no ABI declarations.
   if (u16(bytes, 44) === 0xffff || u16(bytes, 48) >= 0xff00)
@@ -143,7 +191,7 @@ export const readMipsElfMetadata = async (
       : table.count;
     if (count < table.count)
       limitations.push(
-        `MIPS ${table.label} at file offset ${table.offset} extends beyond the captured file: examined ${count} of ${table.count} complete headers. ABI declarations in unavailable headers remain unknown.`,
+        `${table.limitationPrefix}${table.offset} extends beyond the captured file: examined ${count} of ${table.count} complete headers. ABI declarations in unavailable headers remain unknown.`,
       );
     if (count === 0) continue;
     // Counts are bounded by the ELF16 fields and strides by their exact ELF32

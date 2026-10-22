@@ -38,11 +38,15 @@ bridge-reported `language_id` after import. A caller-selected
 pin; combining the pinned profile with an environment override is a typed
 refusal. A header that declares an ABI field but carries no record is still
 refused. Two further boundaries apply: an inspection that could not examine
-every ABI declaration source (for example a carved ELF whose section table
-extends past the captured bytes without a program-header record) does not
-establish the recordless admission, and an `EF_MIPS_ARCH_32` header that
-_declares_ an ABI is refused rather than relabeled, because the declared-ABI
-lane is verified for `EF_MIPS_ARCH_32R2` headers only.
+every ABI declaration source does not establish the recordless admission, and
+an `EF_MIPS_ARCH_32` header that _declares_ an ABI is refused rather than
+relabeled, because the declared-ABI lane is verified for `EF_MIPS_ARCH_32R2`
+headers only. One carved shape is the exception to the first boundary: when
+the only limitation is a section header table that extends past the captured
+bytes, and the complete program header table carries no `PT_MIPS_ABIFLAGS`
+record, the file is admitted on this recordless lane. The unread section
+headers stay recorded as a limitation in the profile and in Evidence, beside
+the o32 assumption. Any other limitation, alone or with that one, is refused.
 
 Explicit `EF_MIPS_FP64` and `EF_MIPS_NAN2008` declarations are refused. Their
 absence is insufficient: Clang can emit identical `e_flags` for FP32, FP64 and
@@ -74,7 +78,9 @@ and records the unavailable headers as a limitation. The provider refuses an
 incomplete ABI declaration inspection even when a program-header ABI record is
 valid, because an unavailable section header could carry an unsupported or
 conflicting declaration. A missing program-header record does not make ABI
-declarations in uncaptured sections absent or supply a default ABI.
+declarations in uncaptured sections absent or supply a default ABI: the
+recordless carve admitted above keeps them as an unknown, recorded limitation,
+and its o32 basis remains an assumption, not a declaration.
 The field layout follows
 [`Elf_MIPS_ABIFlags_v0`](https://github.com/bminor/glibc/blob/master/elf/elf.h).
 

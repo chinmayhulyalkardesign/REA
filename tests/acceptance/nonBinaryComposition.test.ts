@@ -1,5 +1,4 @@
 import { parseMcpToolError } from "../fixtures/mcpToolError.js";
-import { Client, InMemoryTransport } from "@modelcontextprotocol/client";
 import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { expect, onTestFinished } from "vitest";
@@ -12,6 +11,7 @@ import { createTestBinarySession } from "../fixtures/binarySession.js";
 import { writeOrderedZip } from "../fixtures/artifactEntryOrder.js";
 import { createTestTempDirectory } from "../fixtures/temporaryDirectory.js";
 import { cliTest } from "../support/cli/cliFixture.js";
+import { createTestMcp } from "../support/mcp/mcpFixture.js";
 
 const connect = async (environment: NodeJS.ProcessEnv) => {
   const session = createTestBinarySession(() => {
@@ -25,17 +25,15 @@ const connect = async (environment: NodeJS.ProcessEnv) => {
       javascriptRecovery: createJavaScriptRecoveryProvider(environment),
     },
   );
-  const client = new Client({ name: "composition-parity", version: "1" });
+  const mcp = createTestMcp();
   onTestFinished(async () => {
-    await client.close();
-    await server.close();
-    await session.close();
+    try {
+      await mcp.close();
+    } finally {
+      await session.close();
+    }
   });
-  const [clientTransport, serverTransport] =
-    InMemoryTransport.createLinkedPair();
-  await server.connect(serverTransport);
-  await client.connect(clientTransport);
-  return client;
+  return mcp.connect(server, { name: "composition-parity", version: "1" });
 };
 
 for (const { jarConfigured, setting } of [
@@ -207,6 +205,37 @@ cliTest(
     expect(parseMcpToolError(response)).toEqual({ error: cliResult.json });
     expect(JSON.stringify(parseMcpToolError(response))).toContain(
       "REA_WAKARU_COMMAND",
+    );
+  },
+);
+
+cliTest(
+  "preserves optional js-redox configuration through CLI and MCP",
+  async ({ cli }) => {
+    const root = await createTestTempDirectory("rea-deobfuscation-missing-");
+    const path = join(root, "bundle.js");
+    await writeFile(path, "console.log(1);\n");
+    const environment = {
+      REA_LOG_LEVEL: "silent",
+      REA_JS_REDOX_COMMAND: "relative-unavailable-tool",
+    };
+    const output = join(root, "output");
+    const cliResult = await cli.run({
+      arguments: ["deobfuscate-javascript-source", path, output, "--json"],
+      environment,
+      timeoutMs: 10000,
+    });
+    expect(cliResult.exitCode).toBe(1);
+    expect(cliResult.json).toMatchObject({ code: "capability_unavailable" });
+    const client = await connect(environment);
+    const response = await client.callTool({
+      name: "deobfuscate_javascript_source",
+      arguments: { path, output_directory: output },
+    });
+    expect(response.isError).toBe(true);
+    expect(parseMcpToolError(response)).toEqual({ error: cliResult.json });
+    expect(JSON.stringify(parseMcpToolError(response))).toContain(
+      "REA_JS_REDOX_COMMAND",
     );
   },
 );

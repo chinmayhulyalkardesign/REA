@@ -782,6 +782,11 @@ const HOST_RESTRICTED_TOOLS = [
     "javascriptRecovery",
     "javascriptRecoveryEnabled",
   ],
+  [
+    "deobfuscate_javascript_source",
+    "javascriptDeobfuscation",
+    "javascriptDeobfuscationEnabled",
+  ],
 ] as const;
 
 describe("host-restricted integrations", () => {

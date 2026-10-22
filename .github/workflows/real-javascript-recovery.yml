@@ -59,8 +59,35 @@ jobs:
           printf '%s  %s\n' 664fa06782a61eda7ed15885134b52525fd565dd77607e642062ceb6cd927c38 "$RUNNER_TEMP/rea-wakaru/wakaru" | sha256sum --check
       - name: Install isolated fixture compilers
         run: npm install --prefix "$RUNNER_TEMP/rea-fixture-compilers" --ignore-scripts --no-audit --no-fund esbuild@0.25.10 webpack@5.101.3
+      - name: Install Rust 1.99 and pinned sccache
+        shell: bash
+        run: |
+          rustup toolchain install 1.99.0 --profile minimal
+          mkdir -p "$RUNNER_TEMP/rea-sccache"
+          curl --fail --location --retry 3 https://github.com/mozilla/sccache/releases/download/v0.18.0/sccache-v0.18.0-x86_64-unknown-linux-musl.tar.gz -o "$RUNNER_TEMP/rea-sccache/sccache.tar.gz"
+          printf '%s  %s\n' 45f1447fbe231e3037bde351ef70677dd212216c8d62ae7ca409fecc4d6acc89 "$RUNNER_TEMP/rea-sccache/sccache.tar.gz" | sha256sum --check
+          tar -xzf "$RUNNER_TEMP/rea-sccache/sccache.tar.gz" -C "$RUNNER_TEMP/rea-sccache"
+          mv "$RUNNER_TEMP/rea-sccache/sccache-v0.18.0-x86_64-unknown-linux-musl/sccache" "$RUNNER_TEMP/rea-sccache/sccache"
+          "$RUNNER_TEMP/rea-sccache/sccache" --version
+      - name: Build audited js-redox producer
+        shell: bash
+        env:
+          RUSTC_WRAPPER: ${{ runner.temp }}/rea-sccache/sccache
+          CARGO_TARGET_DIR: ${{ runner.temp }}/rea-js-redox-target
+        run: |
+          mkdir -p "$RUNNER_TEMP/rea-js-redox"
+          git -C "$RUNNER_TEMP/rea-js-redox" init
+          git -C "$RUNNER_TEMP/rea-js-redox" remote add origin https://github.com/codeandsolder/js-redox.git
+          git -C "$RUNNER_TEMP/rea-js-redox" fetch --depth 1 origin 42ca30ade268b8c9abf9277feffa3cd23f533518
+          git -C "$RUNNER_TEMP/rea-js-redox" checkout --detach FETCH_HEAD
+          test "$(git -C "$RUNNER_TEMP/rea-js-redox" rev-parse HEAD)" = "42ca30ade268b8c9abf9277feffa3cd23f533518"
+          cargo +1.99.0 build --locked --release --manifest-path "$RUNNER_TEMP/rea-js-redox/Cargo.toml" -p jsvm-lift --bin deobfuscate-safe
+          test "$("$CARGO_TARGET_DIR/release/deobfuscate-safe" --version)" = "jsvm-lift 0.1.1"
       - run: npm run build:cached
       - run: npm run verify:javascript:recovery
         env:
           REA_WAKARU_COMMAND: ${{ runner.temp }}/rea-wakaru/wakaru
           REA_JAVASCRIPT_FIXTURE_TOOLS: ${{ runner.temp }}/rea-fixture-compilers
+      - run: npm run verify:javascript:deobfuscation
+        env:
+          REA_JS_REDOX_COMMAND: ${{ runner.temp }}/rea-js-redox-target/release/deobfuscate-safe

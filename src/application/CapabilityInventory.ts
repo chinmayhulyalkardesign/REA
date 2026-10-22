@@ -62,6 +62,7 @@ export const HOST_RESTRICTED_FEATURES = [
   "firmwareInspection",
   "firmwareExtraction",
   "javascriptRecovery",
+  "javascriptDeobfuscation",
 ] as const;
 export type HostRestrictedFeature = (typeof HOST_RESTRICTED_FEATURES)[number];
 
@@ -87,6 +88,7 @@ export type AvailabilityPolicy = {
   readonly apktoolAnalysisAvailability?: ProviderAvailability;
   readonly jebAnalysisAvailability?: JebAnalysisAvailability;
   readonly javascriptRecoveryEnabled?: boolean;
+  readonly javascriptDeobfuscationEnabled?: boolean;
   readonly webModuleResolutionEnabled?: boolean;
   readonly browserObservationEnabled?: boolean;
   readonly browserScenarioEnabled?: boolean;
@@ -484,6 +486,13 @@ const workflowAvailabilityFor = ({
       "javascriptRecovery",
       policy.javascriptRecoveryEnabled,
       "On Linux x64, provide an absolute REA_WAKARU_COMMAND for Wakaru ^1.13.0 (verified with 1.14.0) and util-linux prlimit; see docs/javascript-recovery.md#install-wakaru. No binary target is required.",
+    );
+  if (name === "deobfuscate_javascript_source")
+    return hostRestrictedAvailability(
+      policy,
+      "javascriptDeobfuscation",
+      policy.javascriptDeobfuscationEnabled,
+      "On Linux x64, provide an absolute REA_JS_REDOX_COMMAND for js-redox deobfuscate-safe 0.1.1, util-linux prlimit, and a writable exec-capable TMPDIR (noexec mounts are unsupported). No binary target is required.",
     );
   if (name === "inspect_binary_layout")
     return hostRestrictedAvailability(

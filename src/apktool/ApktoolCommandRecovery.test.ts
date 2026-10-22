@@ -15,6 +15,13 @@ import {
 import type { ProviderProcessSupervisor } from "../process/ProviderProcess.js";
 import { ApktoolProvider } from "./ApktoolProvider.js";
 
+const retainedOutputForTest = (
+  snapshot: Awaited<ReturnType<typeof runOwnedCommand>>,
+) => ({
+  stdout: Buffer.from(snapshot.stdout.text),
+  stderr: Buffer.from(snapshot.stderr.text),
+});
+
 vi.mock("../process/OwnedCommand.js", async (original) => ({
   ...(await original<typeof import("../process/OwnedCommand.js")>()),
   runOwnedCommand: vi.fn(),
@@ -97,7 +104,7 @@ it.each(["process", "helper"] as const)(
         );
       })
       .mockImplementation(async (_spawn, limits) => {
-        limits.observeCompleted?.(version);
+        limits.observeCompleted?.(version, retainedOutputForTest(version));
         return version;
       });
     try {
@@ -149,7 +156,7 @@ it("finishes independent preparation before giving the version process its twent
   const ready = createDeferred<void>();
   vi.mocked(prepareOwnedCommand).mockImplementationOnce(() => ready.promise);
   vi.mocked(runOwnedCommand).mockImplementation(async (_spawn, limits) => {
-    limits.observeCompleted?.(version);
+    limits.observeCompleted?.(version, retainedOutputForTest(version));
     return version;
   });
   const pending = inspect(client);
@@ -176,9 +183,10 @@ it.each(["2.9.3", "not-a-version", "2.1.0"])(
     const reason = { caller: "during final version cleanup" };
     vi.mocked(runOwnedCommand).mockImplementationOnce(
       async (_spawn, limits) => {
-        limits.observeCompleted?.({ ...version, stdout: { text } } as Awaited<
+        const observed = { ...version, stdout: { text } } as Awaited<
           ReturnType<typeof runOwnedCommand>
-        >);
+        >;
+        limits.observeCompleted?.(observed, retainedOutputForTest(observed));
         controller.abort(reason);
         throw new OwnedCommandFailure(
           "cancelled",
@@ -436,7 +444,7 @@ it.each([
           );
     vi.mocked(runOwnedCommand)
       .mockImplementationOnce(async (_spawn, limits) => {
-        limits.observeCompleted?.(version);
+        limits.observeCompleted?.(version, retainedOutputForTest(version));
         return version;
       })
       .mockRejectedValueOnce(failure);

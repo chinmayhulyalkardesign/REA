@@ -9,9 +9,16 @@ import {
 } from "./ArtifactFileOperation.js";
 
 /** Exact physical read completed before descriptor finalization. */
+export interface StableArtifactPhysicalIdentity {
+  readonly device: string;
+  readonly inode: string;
+}
+
 export interface StableArtifactSnapshot {
   readonly bytes: Buffer;
   readonly sha256: string;
+  /** Descriptor-bound identity; non-enumerable so existing JSON projections stay stable. */
+  readonly physicalIdentity?: StableArtifactPhysicalIdentity;
 }
 
 /** Filesystem boundary for stable reads, including deterministic replacement probes. */
@@ -135,10 +142,20 @@ export const readStableArtifact = async (
         );
       assertArtifactReadActive(signal);
       const bytes = Buffer.concat(chunks, count);
-      return {
+      const snapshot: StableArtifactSnapshot = {
         bytes,
         sha256: createHash("sha256").update(bytes).digest("hex"),
       };
+      Object.defineProperty(snapshot, "physicalIdentity", {
+        value: Object.freeze({
+          device: initial.dev.toString(),
+          inode: initial.ino.toString(),
+        }),
+        enumerable: false,
+        configurable: false,
+        writable: false,
+      });
+      return snapshot;
     },
   );
 };

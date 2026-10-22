@@ -8,6 +8,7 @@ import { pipeline } from "node:stream/promises";
 
 import type {
   OwnedProviderProcessSpawnOptions,
+  ProviderProcessRetainedOutput,
   ProviderProcessSnapshot,
   ProviderProcessStopResult,
   SpawnedOwnedProviderProcess,
@@ -87,7 +88,10 @@ interface OwnedCommandLimits {
   /** Accept an ordinary nonzero exit after output closes without other process errors. */
   readonly acceptNonZeroExit?: boolean;
   /** Interpret complete physical output synchronously before awaited final cleanup. */
-  readonly observeCompleted?: (snapshot: ProviderProcessSnapshot) => void;
+  readonly observeCompleted?: (
+    snapshot: ProviderProcessSnapshot,
+    retainedOutput?: ProviderProcessRetainedOutput,
+  ) => void;
   /**
    * Receives stdout instead of the retained snapshot, for output parsed as it
    * arrives. The command completes only after the sink finishes. The sink
@@ -372,7 +376,7 @@ const collectOwnedCommand = async (
         null,
         { processError, collectionFailure: processFailure !== undefined },
       );
-    limits.observeCompleted?.(snapshot);
+    limits.observeCompleted?.(snapshot, supervisor.retainedOutput());
   } catch (cause: unknown) {
     failure =
       cause instanceof OwnedCommandFailure

@@ -4,11 +4,14 @@ import {
   type AnalysisPartialObservation,
 } from "../domain/analysisErrorBase.js";
 import { analysisErrorWithCleanupFailure } from "../domain/analysisErrorCleanup.js";
-import { AnalysisCancelledError } from "../domain/analysisErrorCore.js";
+import {
+  AnalysisCancelledError,
+  AnalysisOutputError,
+} from "../domain/analysisErrorCore.js";
 import { projectAnalysisError } from "../domain/analysisErrorProjection.js";
 import { ProviderAdapterError } from "../domain/providerAdapterError.js";
 import { ProviderCleanupError } from "../domain/providerCleanupError.js";
-import type { Result } from "../domain/result.js";
+import { ok, type Result } from "../domain/result.js";
 import { dispatchQueuedInterrupts } from "../process/queuedInterrupts.js";
 
 /** Finish a one-shot CLI operation while retaining primary results through close. */
@@ -21,6 +24,9 @@ export const finishAnalysisCommand = async <
   canonicalOperation: string,
   signal: AbortSignal,
   fallbackResource?: string,
+  recoverResolvedCleanupOnly?: (
+    partial: AnalysisPartialObservation,
+  ) => Value | undefined,
 ): Promise<Value | ReturnType<typeof projectAnalysisError>> => {
   let result: Result<Value, AnalysisError>;
   try {
@@ -34,9 +40,9 @@ export const finishAnalysisCommand = async <
           : new ProviderAdapterError(providerId, canonicalOperation, { cause }),
     };
   }
+  const hadIncompleteCleanup = !result.ok && result.error.cleanupIncomplete;
   try {
-    // Resource owners may resolve their retained errors during close. This
-    // adapter cannot infer resolution of a producer's earlier cleanup failure.
+    // Resource owners may resolve retained cleanup-only errors during close.
     await service.close();
   } catch (cause) {
     let cleanup: AnalysisError;
@@ -70,6 +76,20 @@ export const finishAnalysisCommand = async <
             canonicalOperation,
           ),
     };
+  }
+  if (
+    !result.ok &&
+    hadIncompleteCleanup &&
+    !result.error.cleanupIncomplete &&
+    result.error instanceof AnalysisOutputError &&
+    result.error.cleanupOnly &&
+    result.error.partialObservation !== undefined &&
+    recoverResolvedCleanupOnly !== undefined
+  ) {
+    const recovered = recoverResolvedCleanupOnly(
+      result.error.partialObservation,
+    );
+    if (recovered !== undefined) result = ok(recovered);
   }
   await dispatchQueuedInterrupts();
   if (result.ok && signal.aborted)

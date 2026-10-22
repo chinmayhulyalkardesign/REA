@@ -55,6 +55,46 @@ it("waits for admitted operations and shares concurrent close", async () => {
   expect(closed).toBe(true);
 });
 
+it("cancels admission without starting work while retained cleanup is still draining", async () => {
+  const scope = new ArtifactResourceScope();
+  const retryStarted = deferred<void>();
+  const releaseRetry = deferred<void>();
+  const reason = Object.freeze({ kind: "admission-cancelled", nonce: 23 });
+  let attempts = 0;
+  const owner = {
+    kind: "lease" as const,
+    resource: "blocked cleanup",
+    lease: {
+      async release() {
+        attempts += 1;
+        if (attempts === 1) throw new Error("initial close denied");
+        retryStarted.resolve();
+        await releaseRetry.promise;
+      },
+    },
+  };
+
+  expect(await scope.release(owner)).toMatchObject({ kind: "failed" });
+  const controller = new AbortController();
+  let admitted = false;
+  const operation = scope.run(async () => {
+    admitted = true;
+  }, controller.signal);
+  await retryStarted.promise;
+  controller.abort(reason);
+
+  await expect(operation).rejects.toMatchObject({
+    reason: "cancelled",
+    cancellation: { reason },
+  });
+  expect(admitted).toBe(false);
+
+  releaseRetry.resolve();
+  await scope.retryCleanup();
+  expect(attempts).toBe(2);
+  await scope.close();
+});
+
 it("stops a close hook even when retained cleanup is still failing", async () => {
   const scope = new ArtifactResourceScope();
   let releases = 0;

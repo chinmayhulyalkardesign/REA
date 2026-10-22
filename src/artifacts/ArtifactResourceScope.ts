@@ -11,6 +11,7 @@ import {
 } from "./ArtifactReader.js";
 import type { SafeOutputTree } from "./SafeOutputTree.js";
 import type { PrivateRuntimeRoot } from "../process/PrivateRuntimeRoot.js";
+import { ABORTED, waitForAbortable } from "../process/AbortablePromise.js";
 import { AnalysisCleanupLease } from "./AnalysisCleanupLease.js";
 
 /** One artifact resource and the capability that owns its cleanup. */
@@ -117,24 +118,36 @@ export class ArtifactResourceScope {
     ];
   }
 
-  /** Admit a resource operation while the scope remains open. */
-  async run<T>(operation: () => Promise<T>): Promise<T> {
+  /**
+   * Admit a resource operation while the scope remains open.
+   *
+   * The signal only cancels admission waits. Once the operation is admitted,
+   * that operation owns its normal cancellation/cleanup semantics.
+   */
+  async run<T>(
+    operation: () => Promise<T>,
+    admissionSignal?: AbortSignal,
+  ): Promise<T> {
     while (true) {
+      assertAdmissionActive(admissionSignal);
       if (this.#closed)
         throw new ArtifactReaderFailure(
           "unavailable",
           "Artifact resource scope is closed",
         );
-      if (this.#draining !== undefined) await this.#draining;
+      if (this.#draining !== undefined)
+        await waitForAdmission(this.#draining, admissionSignal);
+      assertAdmissionActive(admissionSignal);
       if (this.#closed)
         throw new ArtifactReaderFailure(
           "unavailable",
           "Artifact resource scope is closed",
         );
       if (this.#pending.size > 0) {
-        await this.retryCleanup();
+        await waitForAdmission(this.retryCleanup(), admissionSignal);
         continue;
       }
+      assertAdmissionActive(admissionSignal);
       const running = Promise.resolve().then(operation);
       this.#active.add(running);
       try {
@@ -401,4 +414,24 @@ const cleanup = async (owner: ArtifactResourceOwner): Promise<void> => {
     case "private-runtime-root":
       await owner.root.close();
   }
+};
+
+const admissionCancelled = (signal: AbortSignal): ArtifactReaderFailure =>
+  new ArtifactReaderFailure(
+    "cancelled",
+    "Artifact resource admission cancelled",
+    { cancellation: { reason: signal.reason } },
+  );
+
+const assertAdmissionActive = (signal?: AbortSignal): void => {
+  if (signal?.aborted === true) throw admissionCancelled(signal);
+};
+
+const waitForAdmission = async (
+  pending: Promise<void>,
+  signal?: AbortSignal,
+): Promise<void> => {
+  const waited = await waitForAbortable(pending, signal);
+  if (waited === ABORTED && signal !== undefined)
+    throw admissionCancelled(signal);
 };

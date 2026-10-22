@@ -161,6 +161,68 @@ export const documentationFactIssues = async (root, catalog) => {
   for (const client of catalog.setup_clients)
     requireText(issues, installationPath, installation, client.display_name);
 
+  const jsRedoxFactPaths = {
+    release: "src/javascript/deobfuscation/JsRedoxRelease.ts",
+    verifier: "scripts/verify/javascript/deobfuscation.mjs",
+    guide: "docs/javascript-deobfuscation.md",
+    workflow: ".github/workflows/real-javascript-recovery.yml",
+  };
+  const jsRedoxFacts = new Map();
+  for (const [kind, path] of Object.entries(jsRedoxFactPaths)) {
+    try {
+      jsRedoxFacts.set(kind, await readFile(join(root, path), "utf8"));
+    } catch (cause) {
+      if (cause?.code !== "ENOENT") throw cause;
+    }
+  }
+  if (jsRedoxFacts.size > 0) {
+    for (const [kind, path] of Object.entries(jsRedoxFactPaths))
+      if (!jsRedoxFacts.has(kind))
+        issues.push(`${path}: missing js-redox fact surface`);
+    if (jsRedoxFacts.size === Object.keys(jsRedoxFactPaths).length) {
+      const release = jsRedoxFacts.get("release");
+      const releaseRevision = release.match(
+        /revision:\s*"([0-9a-f]{40})"/u,
+      )?.[1];
+      if (releaseRevision === undefined) {
+        issues.push(
+          `${jsRedoxFactPaths.release}: missing audited js-redox revision`,
+        );
+      } else {
+        const verifier = jsRedoxFacts.get("verifier");
+        const verifierRevision = verifier.match(
+          /const AUDITED_REVISION = "([0-9a-f]{40})";/u,
+        )?.[1];
+        if (verifierRevision !== releaseRevision)
+          issues.push(
+            `${jsRedoxFactPaths.verifier}: audited js-redox revision ${String(verifierRevision)} differs from ${releaseRevision}`,
+          );
+
+        requireText(
+          issues,
+          jsRedoxFactPaths.guide,
+          jsRedoxFacts.get("guide"),
+          releaseRevision,
+        );
+
+        const workflow = jsRedoxFacts.get("workflow");
+        const workflowRevision = workflow.match(
+          /git -C "\$RUNNER_TEMP\/rea-js-redox" fetch --depth 1 origin ([0-9a-f]{40})/u,
+        )?.[1];
+        if (workflowRevision !== releaseRevision)
+          issues.push(
+            `${jsRedoxFactPaths.workflow}: built js-redox revision ${String(workflowRevision)} differs from ${releaseRevision}`,
+          );
+        requireText(
+          issues,
+          jsRedoxFactPaths.workflow,
+          workflow,
+          `test "$(git -C "$RUNNER_TEMP/rea-js-redox" rev-parse HEAD)" = "${releaseRevision}"`,
+        );
+      }
+    }
+  }
+
   const agents = await readFile(join(root, "AGENTS.md"), "utf8");
   requireText(issues, "AGENTS.md", agents, "docs/public/product-catalog.json");
 

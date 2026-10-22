@@ -22,9 +22,13 @@ it("reads exact binary and empty bytes and rejects symlink/size/cancellation bou
   const root = await createTestTempDirectory("rea-stable-artifact-");
   const path = join(root, "source.bin");
   await writeFile(path, Buffer.from([0, 255, 254]));
-  expect((await readStableArtifact(path, 3)).bytes).toEqual(
-    Buffer.from([0, 255, 254]),
-  );
+  const snapshot = await readStableArtifact(path, 3);
+  expect(snapshot.bytes).toEqual(Buffer.from([0, 255, 254]));
+  expect(snapshot.physicalIdentity).toEqual({
+    device: expect.stringMatching(/^\d+$/),
+    inode: expect.stringMatching(/^\d+$/),
+  });
+  expect(Object.keys(snapshot)).not.toContain("physicalIdentity");
   await expect(readStableArtifact(path, 2)).rejects.toMatchObject({
     reason: "limit",
   });
@@ -143,6 +147,15 @@ it.each(["scoped", "transferred"])(
         sha256: createHash("sha256").update(file.bytes).digest("hex"),
       },
     });
+    if (failure.fileCleanupFailure.outcome.kind !== "completed")
+      throw new Error("Expected completed stable read");
+    expect(failure.fileCleanupFailure.outcome.value.physicalIdentity).toEqual({
+      device: expect.stringMatching(/^\d+$/),
+      inode: expect.stringMatching(/^\d+$/),
+    });
+    expect(Object.keys(failure.fileCleanupFailure.outcome.value)).not.toContain(
+      "physicalIdentity",
+    );
     expect(file.handle.fd).toBeGreaterThanOrEqual(0);
     expect(failure.cleanup?.resources).toEqual([file.path]);
     expect(scope?.hasPending ?? false).toBe(ownership === "scoped");

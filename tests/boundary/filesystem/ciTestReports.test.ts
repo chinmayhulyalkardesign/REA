@@ -343,6 +343,9 @@ it("runs the existing onboarding and Python producer guards from their selected 
   expect(
     jobs.docs.steps.some((step) => step.run === "npm run docs:check"),
   ).toBe(true);
+  expect(
+    jobs.docs.steps.some((step) => step.run === "npm run docs:build"),
+  ).toBe(true);
   expect(scripts["docs:check"]).toContain(
     "tests/conformance/readmeConsistency.test.ts",
   );

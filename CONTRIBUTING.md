@@ -258,7 +258,7 @@ relative so they work on GitHub and the website; link to repository files
 outside `docs/` using their full GitHub URLs. Generated reference documents
 use `npm run docs:generate`; `docs:build` generates them before building the website.
 
-Pull requests run `npm run docs:check`. `.github/workflows/pages.yml` is a
+Pull requests run `npm run docs:check` and `npm run docs:build`. `.github/workflows/pages.yml` is a
 manual VitePress build and does not publish. The public site at
 <https://rea.tools/> serves `website/public/` through Cloudflare Workers. See
 the [website README](website/README.md#cloudflare-workers) for previews and

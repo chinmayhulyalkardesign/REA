@@ -217,7 +217,8 @@ const nativeRequire = (
     hasMemberAccess = true;
     node = node.object;
   }
-  if (!t.isCallExpression(node)) return undefined;
+  if (!t.isCallExpression(node) && !t.isOptionalCallExpression(node))
+    return undefined;
   const name = calleeName(node.callee);
   if (
     name !== "require" &&

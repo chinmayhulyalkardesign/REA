@@ -1078,6 +1078,15 @@ Kimi-K3 backend, not the WorkBuddy MCP client. Set the profile on REA's
 registration in the actual MCP host; the host's name alone does not identify
 the downstream model or its schema constraints.
 
+The compact profile also protects strict Anthropic-compatible gateways from
+known schema-translation failures reported in [#3800](https://github.com/morluto/rea/issues/3800):
+primitive `enum` properties without a sibling `type`, and `oneOf`/`allOf`
+inside a property listed in `required`. Affected schemas use the same reduced
+first-level projection described below, so the gateway receives a plain object
+shape while REA continues to validate the complete canonical contract locally.
+This is a compatibility projection, not a claim that the gateway reproduces
+the full union semantics.
+
 The compact profile renders the same tool set, output schemas, annotations,
 and canonical server-side validation. It changes only the advertised input
 JSON Schema:

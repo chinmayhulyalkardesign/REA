@@ -294,6 +294,20 @@ const detectedTypes = (
     schema.type.every((type) => typeof type === "string")
   )
     return schema.type;
+  if (Array.isArray(schema.enum) && schema.enum.length > 0) {
+    const enumTypes = [
+      ...new Set(
+        schema.enum.map((value) => {
+          if (value === null) return "null";
+          if (Array.isArray(value)) return "array";
+          if (typeof value === "object") return "object";
+          return typeof value;
+        }),
+      ),
+    ];
+    if (enumTypes.every((type) => jsonValueTypes.includes(type)))
+      return enumTypes;
+  }
   const alternatives = Array.isArray(schema.anyOf)
     ? schema.anyOf
     : Array.isArray(schema.oneOf)
@@ -306,6 +320,69 @@ const detectedTypes = (
   if (types.some((type) => type === undefined)) return undefined;
   return [...new Set(types.flatMap((type) => type ?? []))];
 };
+
+/**
+ * Strict Anthropic-compatible gateways reject combinators in nested tool
+ * parameters and enum schemas without an explicit type. Compact presentation
+ * is already a lossy client-facing projection, so force those schemas through
+ * the shallow projection while leaving the canonical runtime contract intact.
+ */
+const hasGatewayIncompatibleShape = (schema: unknown): boolean => {
+  if (Array.isArray(schema)) return schema.some(hasGatewayIncompatibleShape);
+  if (!isSchemaObject(schema)) return false;
+  if (Array.isArray(schema.anyOf) && schema.anyOf.length === 0) return true;
+  if (Array.isArray(schema.required) && isSchemaObject(schema.properties)) {
+    for (const name of schema.required) {
+      const property = schema.properties[name];
+      if (isSchemaObject(property) && containsGatewayCombinator(property))
+        return true;
+    }
+  }
+  if (
+    Array.isArray(schema.enum) &&
+    schema.enum.length > 0 &&
+    schema.type === undefined
+  ) {
+    const types = new Set(
+      schema.enum.map((value) =>
+        value === null
+          ? "null"
+          : Array.isArray(value)
+            ? "array"
+            : typeof value === "object"
+              ? "object"
+              : typeof value,
+      ),
+    );
+    if (
+      types.size === 1 &&
+      [...types].every((type) =>
+        ["string", "number", "boolean", "null"].includes(type),
+      )
+    )
+      return true;
+  }
+  return schemaChildrenAndMaps(schema).some(hasGatewayIncompatibleShape);
+};
+
+const containsGatewayCombinator = (schema: unknown): boolean => {
+  if (Array.isArray(schema)) return schema.some(containsGatewayCombinator);
+  if (!isSchemaObject(schema)) return false;
+  if (schema.oneOf !== undefined || schema.allOf !== undefined) return true;
+  return schemaChildrenAndMaps(schema).some(containsGatewayCombinator);
+};
+
+/** Traverse only schema-valued positions; property names remain opaque data. */
+const schemaChildrenAndMaps = (
+  schema: Readonly<Record<string, unknown>>,
+): readonly unknown[] =>
+  Object.entries(schema).flatMap(([key, value]) => {
+    if (schemaMaps.has(key) && isSchemaObject(value))
+      return Object.values(value);
+    if (schemaArrays.has(key) && Array.isArray(value)) return value;
+    if (schemaChildren.has(key)) return Array.isArray(value) ? value : [value];
+    return [];
+  });
 
 const REDUCED_ANNOTATION =
   "Advertised in reduced form by the compact input schema profile; the server still validates complete canonical inputs.";
@@ -389,7 +466,11 @@ export const compactAdvertisedInputSchema = (
   budgetBytes: number,
 ): CompactedInputSchema => {
   const inline = inlineWithinBudget(stripAnnotations(schema), budgetBytes);
-  if (inline !== undefined && schemaDepth(inline) <= COMPACT_SCHEMA_MAX_DEPTH)
+  if (
+    inline !== undefined &&
+    schemaDepth(inline) <= COMPACT_SCHEMA_MAX_DEPTH &&
+    !hasGatewayIncompatibleShape(inline)
+  )
     return { schema: inline, presentation: "inline" };
   const reduced = reduceToShallowProperties(schema);
   if (serializedBytes(reduced) <= budgetBytes)

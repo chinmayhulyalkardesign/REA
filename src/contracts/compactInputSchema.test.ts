@@ -224,6 +224,68 @@ describe("compact advertised input schema", () => {
   });
 });
 
+describe("strict gateway compatibility", () => {
+  it("reduces gateway-incompatible enums to explicitly typed properties", () => {
+    const { schema, presentation } = compactAdvertisedInputSchema(
+      {
+        type: "object",
+        properties: { mode: { enum: ["fast", "safe"] } },
+        required: ["mode"],
+      },
+      13 * 1024,
+    );
+    expect(presentation).toBe("reduced");
+    expect(schema.properties).toEqual({ mode: { type: "string" } });
+  });
+
+  it("reduces nested combinators instead of advertising them to strict gateways", () => {
+    const { schema, presentation } = compactAdvertisedInputSchema(
+      {
+        type: "object",
+        properties: {
+          query: {
+            type: "object",
+            properties: {
+              seed: {
+                oneOf: [
+                  { type: "object", properties: { kind: { type: "string" } } },
+                ],
+              },
+            },
+            required: ["seed"],
+          },
+        },
+        required: ["query"],
+      },
+      13 * 1024,
+    );
+    expect(presentation).toBe("reduced");
+    expect(JSON.stringify(schema)).not.toContain("oneOf");
+    expect(schema.properties).toEqual({ query: { type: "object" } });
+  });
+
+  it("does not confuse keyword-named fields with schema keywords", () => {
+    const { schema, presentation } = compactAdvertisedInputSchema(
+      {
+        type: "object",
+        properties: {
+          enum: { type: "string" },
+          oneOf: { type: "string" },
+          default: { type: "boolean" },
+        },
+        required: ["enum", "oneOf"],
+      },
+      13 * 1024,
+    );
+    expect(presentation).toBe("inline");
+    expect(schema.properties).toMatchObject({
+      enum: { type: "string" },
+      oneOf: { type: "string" },
+      default: { type: "boolean" },
+    });
+  });
+});
+
 describe("compact input schema budget and reduction", () => {
   it("budgets repeated-reference expansion before materializing it", () => {
     const definitions: Record<string, unknown> = {

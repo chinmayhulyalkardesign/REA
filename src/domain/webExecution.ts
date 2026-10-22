@@ -8,9 +8,15 @@ import {
 } from "./webRuntime.js";
 import { browserVersionSchema } from "./browserObservationSchemas.js";
 
+export const MAX_WEB_EXECUTION_OBSERVATION_MS = 2_147_483_647;
+
 /** Explicit instrumentation request for one finite, externally driven execution window. */
 export const observeWebExecutionInputSchema = webRuntimeScopeSchema.extend({
-  observation_ms: z.int().min(1).max(2_147_483_647).default(10_000),
+  observation_ms: z
+    .int()
+    .min(1)
+    .max(MAX_WEB_EXECUTION_OBSERVATION_MS)
+    .default(10_000),
 });
 export type ObserveWebExecutionInput = z.infer<
   typeof observeWebExecutionInputSchema

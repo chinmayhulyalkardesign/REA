@@ -8,6 +8,7 @@ import {
 } from "../cliObservationOptions.js";
 import { logCliCommand } from "../cliLogging.js";
 import { CLI_COMMANDS } from "../cliCommandNames.js";
+import { MAX_WEB_EXECUTION_OBSERVATION_MS } from "../domain/webExecution.js";
 import type { Logger } from "pino";
 import type { ProgressReporter } from "../application/ProgressReporter.js";
 import { withCommandCancellation } from "./commandCancellation.js";
@@ -36,7 +37,11 @@ export const registerWebRuntimeCommands = (
     }),
     options: z.object({
       ...browserScopeOptions,
-      observationMs: observationDuration(10_000, 1),
+      observationMs: observationDuration(
+        10_000,
+        1,
+        MAX_WEB_EXECUTION_OBSERVATION_MS,
+      ),
     }),
     run: ({ args, options }) =>
       withCommandCancellation((signal) =>

@@ -5,13 +5,16 @@ import { javaScriptAnalysisResourceControlsSchema } from "./domain/javascript/ja
 import { javaScriptSourcePathsSchema } from "./domain/javascript/javascriptSourceSelection.js";
 
 /** Accept an agent-selected browser observation duration without an artificial ceiling. */
-export const observationDuration = (fallback: number, minimum = 0) =>
-  z
-    .number()
-    .int()
-    .min(minimum)
+export const observationDuration = (
+  fallback: number,
+  minimum = 0,
+  maximum?: number,
+) => {
+  const bounded = z.number().int().min(minimum);
+  return (maximum === undefined ? bounded : bounded.max(maximum))
     .default(fallback)
     .describe("Observation duration in milliseconds");
+};
 
 /** Shared passive browser origin options. */
 export const browserScopeOptions = {

@@ -19,7 +19,7 @@ import { registerAnalysisViewCommands } from "./cli/analysisViewCommands.js";
 import { registerBinaryDiagnosticsCommands } from "./cli/binaryDiagnosticsCommands.js";
 import { registerFridaCommands } from "./cli/fridaCommands.js";
 import type { FridaInstrumentationPort } from "./application/frida/FridaInstrumentationPort.js";
-import { Cli } from "incur";
+import { Cli, Errors } from "incur";
 import { normalizeCliArguments } from "./cliOutput.js";
 
 import { createLogger, parseLogLevel } from "./logger.js";
@@ -120,6 +120,21 @@ export const createCli = (
         );
       },
     },
+  });
+  cli.use(async (_, next) => {
+    try {
+      await next();
+    } catch (error) {
+      if (error instanceof Errors.ValidationError) {
+        // Incur appends the Zod issue dump to ValidationError.message.
+        throw new Errors.ValidationError({
+          message:
+            "REA could not read the command arguments. Check the named argument and its expected type, then try again.",
+          fieldErrors: error.fieldErrors,
+        });
+      }
+      throw error;
+    }
   });
 
   registerSetupCommands(cli, logger, environment);

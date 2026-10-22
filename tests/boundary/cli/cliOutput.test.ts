@@ -14,6 +14,10 @@ import {
 } from "../../../src/cliOutput.js";
 
 const CLI_INTEGRATION_TIMEOUT_MS = 60_000;
+// YAML folds the full guidance, so formatted output checks match its opening.
+const CLI_ARGUMENT_GUIDANCE_OPENING =
+  "REA could not read the command arguments.";
+const CLI_ARGUMENT_VALIDATION_GUIDANCE = `${CLI_ARGUMENT_GUIDANCE_OPENING} Check the named argument and its expected type, then try again.`;
 
 describe("CLI output argument boundary", () => {
   it("rejects token windows that would corrupt structured output", () => {
@@ -428,7 +432,7 @@ describe("compiled CLI output boundary", () => {
         exitCode: 1,
         json: {
           code: "VALIDATION_ERROR",
-          message: expect.stringContaining("expected string"),
+          message: CLI_ARGUMENT_VALIDATION_GUIDANCE,
           fieldErrors: [
             {
               path: "path",
@@ -450,6 +454,8 @@ describe("compiled CLI output boundary", () => {
         expect(result.stdout).toContain("fieldErrors");
         expect(result.stdout).toContain("path");
         expect(result.stdout).toContain("expected string");
+        expect(result.stdout).toContain(CLI_ARGUMENT_GUIDANCE_OPENING);
+        expect(result.stdout).not.toContain("Details");
       }
     },
     CLI_INTEGRATION_TIMEOUT_MS,
@@ -472,6 +478,7 @@ describe("compiled CLI output boundary", () => {
         exitCode: 1,
         json: {
           code: "VALIDATION_ERROR",
+          message: CLI_ARGUMENT_VALIDATION_GUIDANCE,
           fieldErrors: [
             {
               path: "kind",
@@ -507,6 +514,40 @@ describe("compiled CLI output boundary", () => {
         "Error: missing required argument <path>",
       );
       expect(result.stdout).toContain("See below for usage.");
+    },
+    CLI_INTEGRATION_TIMEOUT_MS,
+  );
+});
+
+describe("compiled CLI numeric option validation", () => {
+  workspaceCliTest(
+    "keeps numeric bounds in field diagnostics under the documented guidance",
+    async ({ cli, workspace }) => {
+      const target = workspace.path("target");
+      await mkdir(target);
+      const result = await cli.run({
+        arguments: [
+          "inspect-desktop-application",
+          target,
+          "--max_entries",
+          "100001",
+          "--json",
+        ],
+      });
+      expect(result).toMatchObject({
+        exitCode: 1,
+        json: {
+          code: "VALIDATION_ERROR",
+          message: CLI_ARGUMENT_VALIDATION_GUIDANCE,
+          fieldErrors: [
+            {
+              path: "max_entries",
+              code: "too_big",
+              message: expect.stringContaining("<=100000"),
+            },
+          ],
+        },
+      });
     },
     CLI_INTEGRATION_TIMEOUT_MS,
   );

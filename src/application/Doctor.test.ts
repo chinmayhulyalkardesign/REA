@@ -1052,6 +1052,47 @@ describe("doctor installed Hopper discovery", () => {
     );
     expect(result.hopperPath).toBe(path);
   });
+
+  it("ignores Linux-only launcher candidates on macOS", async () => {
+    const linuxPath = "/opt/hopper-v4/bin/hopper";
+    const result = await runDoctor(
+      undefined,
+      host({
+        platform: "darwin",
+        executable: (candidate) => Promise.resolve(candidate === linuxPath),
+        manualHopperPaths: () => Promise.resolve([]),
+      }),
+    );
+    expect(result.hopperPath).toBeUndefined();
+    expect(result.checks).toContainEqual(
+      expect.objectContaining({
+        name: "hopper",
+        ok: false,
+        classification: "missing_analysis_engine",
+      }),
+    );
+  });
+
+  it("prefers renamed macOS bundle over Linux candidates on macOS", async () => {
+    const renamed = "/Applications/Hopper 5.app/Contents/MacOS/hopper";
+    const linuxPath = "/opt/hopper-v4/bin/hopper";
+    const executables = new Set([renamed, linuxPath]);
+    const result = await runDoctor(
+      undefined,
+      host({
+        platform: "darwin",
+        executable: (candidate) => Promise.resolve(executables.has(candidate)),
+        manualHopperPaths: () => Promise.resolve([renamed]),
+      }),
+    );
+    expect(result.hopperPath).toBe(renamed);
+    expect(result.checks).toContainEqual(
+      expect.objectContaining({
+        name: "hopper",
+        ok: true,
+      }),
+    );
+  });
 });
 
 describe("doctor target admission on Linux", () => {

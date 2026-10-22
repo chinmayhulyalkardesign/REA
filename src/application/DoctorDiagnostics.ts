@@ -156,20 +156,23 @@ const hostCheck = async (host: DoctorHost): Promise<DoctorCheck> => {
 const findHopper = async (host: DoctorHost): Promise<string | undefined> => {
   const candidates =
     host.configuredHopperPath === undefined
-      ? [
-          ...(host.platform === "darwin"
-            ? macHopperCanonicalLauncherCandidates(host.homeDirectory)
-            : [MAC_HOPPER_SYSTEM_LAUNCHER]),
-          ...(host.platform === "linux"
-            ? linuxHopperLauncherCandidates(host.homeDirectory)
-            : [...systemLinuxHopperLauncherCandidates]),
-          ...(host.platform === "darwin"
-            ? []
-            : macHopperCanonicalLauncherCandidates(host.homeDirectory).slice(
+      ? host.platform === "darwin"
+        ? [
+            ...macHopperCanonicalLauncherCandidates(host.homeDirectory),
+            ...(await host.manualHopperPaths()),
+          ]
+        : host.platform === "linux"
+          ? [
+              ...linuxHopperLauncherCandidates(host.homeDirectory),
+              ...systemLinuxHopperLauncherCandidates,
+            ]
+          : [
+              MAC_HOPPER_SYSTEM_LAUNCHER,
+              ...macHopperCanonicalLauncherCandidates(host.homeDirectory).slice(
                 1,
-              )),
-          ...(await host.manualHopperPaths()),
-        ]
+              ),
+              ...(await host.manualHopperPaths()),
+            ]
       : [host.configuredHopperPath];
   const hopperPath = await firstExecutable(host, candidates);
   if (hopperPath !== undefined || host.configuredHopperPath !== undefined)

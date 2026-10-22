@@ -1587,6 +1587,58 @@ describe("application workflow CLI export Evidence", () => {
 });
 
 describe("application workflow CLI export property presence", () => {
+  it("reports nested additions and removals through CLI and stdio MCP", async () => {
+    const root = await createTestTempDirectory("rea-export-ancestor-absence-");
+    const [plain, nested] = await analyzeComparisonSources(root, [
+      'export default () => ({ kind: "result" });',
+      'export default () => ({ kind: "result", nested: { total: 1 } });',
+    ]);
+    for (const [left, right, status] of [
+      [plain, nested, "added"],
+      [nested, plain, "removed"],
+    ] as const) {
+      const input = {
+        left,
+        right,
+        left_module_path: "parser.mjs",
+        left_export_name: "default",
+        right_module_path: "parser.mjs",
+        right_export_name: "default",
+      };
+      const expected = {
+        normalized_result: {
+          summary: {
+            added: status === "added" ? 2 : 0,
+            removed: status === "removed" ? 2 : 0,
+            changed: 0,
+            unknown: 0,
+          },
+          coverage: { status: "complete-within-inputs" },
+          changes: expect.arrayContaining(
+            ["/nested", "/nested/total"].map((path) =>
+              expect.objectContaining({
+                path,
+                status,
+                presence:
+                  status === "added"
+                    ? { left: "absent", right: "present" }
+                    : { left: "present", right: "absent" },
+              }),
+            ),
+          ),
+        },
+      };
+      expect(
+        await runCliWithRequestFile(
+          root,
+          "compare-javascript-export-shapes",
+          input,
+        ),
+      ).toMatchObject(expected);
+      expect(await compareThroughStdioMcp(input)).toMatchObject(expected);
+    }
+  }, 20_000);
+
   it("reports tagged search property presence through compare-javascript-export-shapes", async () => {
     const root = await createTestTempDirectory(
       "rea-export-shape-presence-cli-",

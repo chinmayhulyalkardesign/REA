@@ -259,6 +259,115 @@ describe("JavaScript export return-shape pairing limits", () => {
   });
 });
 
+describe("JavaScript export return-shape ancestor absence", () => {
+  it.each([
+    {
+      description: "an absent object",
+      left: '{ kind: "result" }',
+      right: '{ kind: "result", nested: { total: 1 } }',
+      paths: ["/nested", "/nested/total"],
+    },
+    {
+      description: "multiple ancestors with escaped and empty names",
+      left: '{ kind: "result" }',
+      right: '{ kind: "result", "a/b": { "~key": { "": { total: 1 } } } }',
+      paths: ["/a~1b", "/a~1b/~0key", "/a~1b/~0key/", "/a~1b/~0key//total"],
+    },
+    {
+      description: "an absent array",
+      left: '{ kind: "result" }',
+      right: '{ kind: "result", items: [{ total: 1 }] }',
+      paths: ["/items", "/items/0", "/items/0/total"],
+    },
+    {
+      description: "an explicitly absent array slot",
+      left: '{ kind: "result", items: [,] }',
+      right: '{ kind: "result", items: [{ total: 1 }] }',
+      paths: ["/items/0", "/items/0/total"],
+    },
+  ])(
+    "propagates $description to descendant additions and removals",
+    async ({ left, right, paths }) => {
+      const graphs = await analyzeSources({
+        left: `export default () => (${left});`,
+        right: `export default () => (${right});`,
+      });
+      for (const [result, status] of [
+        [compare(...graphs), "added"],
+        [compare(graphs[1], graphs[0]), "removed"],
+      ] as const) {
+        expect(result.summary).toEqual({
+          added: status === "added" ? paths.length : 0,
+          removed: status === "removed" ? paths.length : 0,
+          changed: 0,
+          unknown: 0,
+        });
+        expect(result.coverage.status).toBe("complete-within-inputs");
+        expect(result.changes.map(({ path }) => path).sort()).toEqual(
+          [...paths].sort(),
+        );
+        for (const change of result.changes)
+          expect(change).toMatchObject({
+            status,
+            presence:
+              status === "added"
+                ? { left: "absent", right: "present" }
+                : { left: "present", right: "absent" },
+          });
+      }
+    },
+  );
+
+  it.each([
+    [
+      "an unresolved value",
+      'export default () => ({ kind: "result", nested: read() });',
+    ],
+    [
+      "a partial container",
+      'export default () => ({ kind: "result", nested: { ...read() } });',
+    ],
+    [
+      "unknown ancestor presence",
+      'export default () => ({ ...read(), kind: "result" });',
+    ],
+    [
+      "a deleted ancestor",
+      `export default function make() {
+      const result = { kind: "result", nested: {} };
+      delete result.nested;
+      return result;
+    }`,
+    ],
+  ])(
+    "keeps descendants unknown below %s in both directions",
+    async (_description, left) => {
+      const graphs = await analyzeSources({
+        left,
+        right:
+          'export default () => ({ kind: "result", nested: { total: 1 } });',
+      });
+      for (const [result, presence] of [
+        [compare(...graphs), { left: "unknown-coverage", right: "present" }],
+        [
+          compare(graphs[1], graphs[0]),
+          { left: "present", right: "unknown-coverage" },
+        ],
+      ] as const) {
+        expect(result.changes).toContainEqual(
+          expect.objectContaining({
+            path: "/nested/total",
+            status: "unknown",
+            presence,
+          }),
+        );
+        expect(result.summary).toMatchObject({ added: 0, removed: 0 });
+        expect(result.coverage.status).toBe("partial");
+      }
+    },
+  );
+});
+
 describe("JavaScript export return-shape uncertain presence", () => {
   it("keeps deleted property presence unknown in both comparison directions", async () => {
     const plain = 'export default () => ({ kind: "result" });';

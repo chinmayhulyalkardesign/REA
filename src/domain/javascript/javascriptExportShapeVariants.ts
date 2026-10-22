@@ -155,7 +155,7 @@ const inventoryFor = (
   source_range: shape.source_range,
   properties: uniqueSorted([
     ...shape.fields
-      .filter((field) => fieldPresence(shape, field, field.path) === "present")
+      .filter((field) => field.presence === "present")
       .map(({ path }) => path),
     ...shape.property_coverage.map(({ path }) => path),
   ]).filter((path) => path !== ""),
@@ -172,10 +172,7 @@ export const hasPartialJavaScriptExportPropertyCoverage = (
   shapes.some(
     (shape) =>
       shape.property_coverage.some(({ status }) => status === "partial") ||
-      shape.fields.some(
-        (field) =>
-          fieldPresence(shape, field, field.path) === "unknown-coverage",
-      ),
+      shape.fields.some((field) => field.presence === "unknown-coverage"),
   );
 
 interface DiscriminantOccurrence {
@@ -189,7 +186,7 @@ const discriminantOccurrences = (
   const output = new Map<string, DiscriminantOccurrence>();
   shapes.forEach((shape, index) => {
     for (const field of shape.fields) {
-      if (fieldPresence(shape, field, field.path) !== "present") continue;
+      if (field.presence !== "present") continue;
       const value = literalValue(field);
       if (!value.found) continue;
       const discriminant = { path: field.path, value: value.value };
@@ -295,26 +292,41 @@ const emptyShapeUnknownChange = (
     ],
   });
 
+interface ShapeIndex {
+  readonly fields: ReadonlyMap<string, Field>;
+  readonly coverage: ReadonlyMap<
+    string,
+    Shape["property_coverage"][number]["status"]
+  >;
+}
+
+const indexShape = (shape: Shape): ShapeIndex => ({
+  fields: new Map(shape.fields.map((field) => [field.path, field])),
+  coverage: new Map(
+    shape.property_coverage.map(({ path, status }) => [path, status]),
+  ),
+});
+
 const diffPair = (
   left: Shape,
   right: Shape,
   discriminant: Discriminant,
   evidenceLinks: [string, string],
 ): JavaScriptExportShapeComparisonChange[] => {
-  const leftFields = new Map(left.fields.map((field) => [field.path, field]));
-  const rightFields = new Map(right.fields.map((field) => [field.path, field]));
+  const leftShape = indexShape(left);
+  const rightShape = indexShape(right);
   const paths = uniqueSorted([
-    ...leftFields.keys(),
-    ...rightFields.keys(),
-    ...left.property_coverage.map(({ path }) => path),
-    ...right.property_coverage.map(({ path }) => path),
+    ...leftShape.fields.keys(),
+    ...rightShape.fields.keys(),
+    ...leftShape.coverage.keys(),
+    ...rightShape.coverage.keys(),
   ]);
   return paths.flatMap((path) => {
-    const leftField = fieldAtPath(left, leftFields, path);
-    const rightField = fieldAtPath(right, rightFields, path);
+    const leftField = fieldAtPath(leftShape, path);
+    const rightField = fieldAtPath(rightShape, path);
     const status = fieldChangeStatus({
-      leftShape: left,
-      rightShape: right,
+      leftShape,
+      rightShape,
       path,
       leftField,
       rightField,
@@ -326,8 +338,8 @@ const diffPair = (
         path,
         discriminant,
         presence: {
-          left: fieldPresence(left, leftField, path),
-          right: fieldPresence(right, rightField, path),
+          left: fieldPresence(leftShape, leftField, path),
+          right: fieldPresence(rightShape, rightField, path),
         },
         left: fieldAvailability(leftField),
         right: fieldAvailability(rightField),
@@ -345,15 +357,10 @@ const diffPair = (
   });
 };
 
-const fieldAtPath = (
-  shape: Shape,
-  fields: ReadonlyMap<string, Field>,
-  path: string,
-): Field | undefined => {
-  const field = fields.get(path);
+const fieldAtPath = (shape: ShapeIndex, path: string): Field | undefined => {
+  const field = shape.fields.get(path);
   if (field !== undefined) return field;
-  if (!shape.property_coverage.some((coverage) => coverage.path === path))
-    return undefined;
+  if (!shape.coverage.has(path)) return undefined;
   return {
     path,
     presence: "present",
@@ -365,8 +372,8 @@ const fieldAtPath = (
 };
 
 interface FieldChangeInput {
-  readonly leftShape: Shape;
-  readonly rightShape: Shape;
+  readonly leftShape: ShapeIndex;
+  readonly rightShape: ShapeIndex;
   readonly path: string;
   readonly leftField: Field | undefined;
   readonly rightField: Field | undefined;
@@ -407,21 +414,25 @@ const fieldChangeStatus = ({
 };
 
 const fieldPresence = (
-  shape: Shape,
+  shape: ShapeIndex,
   field: Field | undefined,
   path: string,
 ): PropertyPresence => {
   if (field !== undefined) return field.presence;
-  return propertyCoverageComplete(shape, parentPointer(path))
-    ? "absent"
-    : "unknown-coverage";
+  for (
+    let parent = parentPointer(path);
+    parent !== null;
+    parent = parentPointer(parent)
+  ) {
+    if (shape.coverage.get(parent) === "complete") return "absent";
+    const ancestor = fieldAtPath(shape, parent);
+    // Only established absence propagates through an ancestor. A retained
+    // container or unresolved value cannot prove its missing descendants absent.
+    if (ancestor !== undefined)
+      return ancestor.presence === "absent" ? "absent" : "unknown-coverage";
+  }
+  return "unknown-coverage";
 };
-
-const propertyCoverageComplete = (shape: Shape, path: string | null): boolean =>
-  path !== null &&
-  shape.property_coverage.some(
-    (coverage) => coverage.path === path && coverage.status === "complete",
-  );
 
 const parentPointer = (path: string): string | null => {
   if (path === "") return null;

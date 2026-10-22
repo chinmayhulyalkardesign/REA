@@ -53,6 +53,7 @@ describe("onboarding documentation product facts", () => {
       .filter((language) => language.code !== "en")
       .map((language) => language.readme);
     expect(translatedReadmes).toContain("docs/readme/README_it.md");
+    expect(translatedReadmes).toContain("docs/readme/README_hi-Latn.md");
     expect(translatedReadmes).toContain("docs/readme/README_el.md");
     const editions = (await readdir(resolve("docs/readme")))
       .filter((name) => /^README_[A-Za-z0-9-]+\.md$/u.test(name))

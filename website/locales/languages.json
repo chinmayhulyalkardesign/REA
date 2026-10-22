@@ -124,5 +124,11 @@
     "name": "മലയാളം",
     "readme": "docs/readme/README_ml.md",
     "dir": "ltr"
+  },
+  {
+    "code": "hi-Latn",
+    "name": "Hinglish",
+    "readme": "docs/readme/README_hi-Latn.md",
+    "dir": "ltr"
   }
 ]

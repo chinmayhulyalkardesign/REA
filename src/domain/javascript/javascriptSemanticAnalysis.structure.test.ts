@@ -359,6 +359,60 @@ describe("JavaScript semantic analysis: class member keys", () => {
   });
 });
 
+describe("JavaScript semantic analysis: non-reference names", () => {
+  // A parse failure also yields no references, so an absence claim first
+  // requires complete coverage and the declared outer binding.
+  const namedReferences = (source: string, name: string) => {
+    const ir = analyzeJavaScriptSemantics(source);
+    expect(ir.coverage.status).toBe("complete");
+    onlyBinding(ir, name);
+    return ir.references.filter((reference) => reference.name === name);
+  };
+
+  it("does not read an outer binding through TypeScript member and enum names", () => {
+    expect(
+      namedReferences(
+        `
+          const marker = "seed";
+          interface Shape { marker: string; marker(): void }
+          type Literal = { marker: string; marker(): void };
+          enum Kind { marker }
+        `,
+        "marker",
+      ),
+    ).toEqual([]);
+  });
+
+  it("does not read outer bindings through meta properties or import attribute keys", () => {
+    const source = `
+      import data from "./data.json" with { type: "json" };
+      const type = "seed";
+      const meta = "seed";
+      const target = "seed";
+      export function read() { return new.target ?? import.meta.url; }
+    `;
+    expect(
+      ["type", "meta", "target"].flatMap((name) =>
+        namedReferences(source, name),
+      ),
+    ).toEqual([]);
+  });
+
+  it("keeps reads from computed TypeScript keys and enum initializers", () => {
+    const reads = namedReferences(
+      `
+        const marker = "seed";
+        interface Shape { [marker]: string }
+        enum Kind { first = marker }
+      `,
+      "marker",
+    );
+    expect(
+      reads.map(({ role, location }) => `${role}@${location.start.line}`),
+    ).toEqual(["read@3", "read@4"]);
+  });
+});
+
 describe("JavaScript semantic analysis: structure 2", () => {
   it("retains ESM, re-export, require, and CommonJS export relationships", () => {
     const ir = analyzeJavaScriptSemantics(`

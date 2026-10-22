@@ -766,6 +766,7 @@ const isNonReferenceKey = (node: t.Identifier, parent: t.Node): boolean =>
     !parent.computed &&
     !(t.isObjectProperty(parent) && parent.shorthand)) ||
   isNoncomputedClassMemberKey(node, parent) ||
+  isTypeOrModuleSyntaxName(node, parent) ||
   t.isPrivateName(parent) ||
   (t.isExportSpecifier(parent) && parent.exported === node) ||
   t.isLabeledStatement(parent) ||
@@ -782,6 +783,21 @@ const isNoncomputedClassMemberKey = (
     t.isTSDeclareMethod(parent)) &&
   parent.key === node &&
   !parent.computed;
+
+/**
+ * Type member keys, enum member names, `import.meta`/`new.target` parts and
+ * import attribute keys are syntax names, never lexical reads.
+ */
+const isTypeOrModuleSyntaxName = (
+  node: t.Identifier,
+  parent: t.Node,
+): boolean =>
+  ((t.isTSPropertySignature(parent) || t.isTSMethodSignature(parent)) &&
+    parent.key === node &&
+    !parent.computed) ||
+  (t.isTSEnumMember(parent) && parent.id === node) ||
+  t.isMetaProperty(parent) ||
+  (t.isImportAttribute(parent) && parent.key === node);
 
 const patternNames = (pattern: t.Node): string[] => {
   if (t.isTSParameterProperty(pattern)) return patternNames(pattern.parameter);

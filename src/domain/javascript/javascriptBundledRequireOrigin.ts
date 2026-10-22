@@ -2,6 +2,7 @@ import * as t from "@babel/types";
 
 import { javascriptBootstrapAt } from "./javascriptBootstrap.js";
 import { proveJavaScriptBootstrapIntegrity } from "./javascriptBootstrapIntegrity.js";
+import { createBootstrapLoaderAliasLookup } from "./javascriptBootstrapLoaderAliases.js";
 import {
   semanticMemberChain,
   semanticStaticPropertyKey,
@@ -154,20 +155,12 @@ const canonicalWebpackInteropBindings = (
   // and Object/Reflect mutators; any write that may select `n` counts.
   const writes = new Set<t.Node>();
   const interop = createSemanticModuleInterop(state);
+  const loaderAlias = createBootstrapLoaderAliasLookup(loaderBindingIds, state);
   completeSemanticSteps(
     collectJavaScriptIdentityWritesSteps(
       state.program,
-      (root, kind) => {
-        const node = unwrapJavaScriptExpression(root).node;
-        return kind === "member" &&
-          t.isIdentifier(node) &&
-          loaderBindingIds.has(
-            resolveSemanticBindingState(state, node, node.name)?.bindingId ??
-              "",
-          )
-          ? [["loader"]]
-          : [];
-      },
+      (root, kind) =>
+        kind === "member" && loaderAlias(root) ? [["loader"]] : [],
       interop.intrinsicInvocation,
       interop.staticString,
       interop.isFreshObject,

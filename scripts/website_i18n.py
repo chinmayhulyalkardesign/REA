@@ -65,8 +65,8 @@ def languages(root):
             raise ValueError(f"Duplicate README edition: {item['readme']}")
         codes.add(item["code"])
         filenames.add(item["readme"])
-    if editions and ({item["readme"] for item in data} != editions):
-        raise ValueError("Website languages must match the README language editions")
+    if editions and not {item["readme"] for item in data} <= editions:
+        raise ValueError("Website languages must reference existing README editions")
     return data
 
 

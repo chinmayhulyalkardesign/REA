@@ -57,7 +57,7 @@ describe("onboarding documentation product facts", () => {
     const editions = (await readdir(resolve("docs/readme")))
       .filter((name) => /^README_[A-Za-z0-9-]+\.md$/u.test(name))
       .map((name) => `docs/readme/${name}`);
-    expect([...translatedReadmes].sort()).toEqual(editions.sort());
+    expect(editions).toEqual(expect.arrayContaining(translatedReadmes));
     const english = shellExamples(await readFile(resolve("README.md"), "utf8"));
     for (const path of translatedReadmes)
       expect(

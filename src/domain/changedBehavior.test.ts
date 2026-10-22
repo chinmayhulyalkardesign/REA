@@ -6,6 +6,29 @@ import {
 } from "./changedBehavior.js";
 import { createEvidence, type Evidence } from "./evidence.js";
 import type { JsonValue } from "./jsonValue.js";
+import { processCaptureComparisonSchema } from "./process/processComparison.js";
+
+it("rejects an unchanged aggregate over a contradictory process dimension", () => {
+  const input = {
+    status: "unchanged",
+    terminal: "contradiction",
+    interaction: "unchanged",
+    exit: "unchanged",
+    filesystem: "unchanged",
+    process: "unchanged",
+    first_divergence: { status: "none" },
+    limitations: [],
+  };
+  expect(processCaptureComparisonSchema.safeParse(input).success).toBe(false);
+  expect(
+    processCaptureComparisonSchema.parse({ ...input, status: "contradiction" })
+      .status,
+  ).toBe("contradiction");
+  expect(
+    processCaptureComparisonSchema.parse({ ...input, terminal: "unchanged" })
+      .status,
+  ).toBe("unchanged");
+});
 
 const source = (digit: string): Evidence =>
   createEvidence(

@@ -309,7 +309,7 @@ export class JebProvider implements JebAnalysisPort {
       signal,
     );
     const opened = openProject.parse(
-      this.#requireSuccess(payload, request.operation),
+      this.#requireSuccess(payload, request.operation, request.input.path),
     );
     const engine = await this.#engine(request.operation, signal);
     const result = jebResultSchemas.open_jeb_project.parse({
@@ -406,7 +406,11 @@ export class JebProvider implements JebAnalysisPort {
     );
   }
 
-  #requireSuccess(payload: unknown, operation: JebOperation): unknown {
+  #requireSuccess(
+    payload: unknown,
+    operation: JebOperation,
+    targetPath?: string,
+  ): unknown {
     if (typeof payload !== "object" || payload === null)
       throw new AnalysisProtocolError(
         "JEB MCP returned a non-object envelope; no observation can be established",
@@ -415,7 +419,7 @@ export class JebProvider implements JebAnalysisPort {
     if (success === false)
       throw new AnalysisUnsupportedTargetError(
         operation,
-        this.#endpoint.toString(),
+        targetPath ?? this.#endpoint.toString(),
         refusalReason(payload, "The engine refused the request"),
       );
     if (success !== true)

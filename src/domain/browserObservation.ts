@@ -65,31 +65,69 @@ const HTTP_ENDPOINT_MESSAGE =
 const BROWSER_SOCKET_PATH = "/devtools/browser/";
 const REDACTED_BROWSER_SOCKET_PATH = `${BROWSER_SOCKET_PATH}[REDACTED]`;
 
+/** Default TCP ports the URL API omits from `url.port` / `url.host`. */
+const DEFAULT_PORT_BY_PROTOCOL: Record<string, string> = {
+  "http:": "80",
+  "https:": "443",
+  "ws:": "80",
+  "wss:": "443",
+};
+
+/**
+ * True when the caller spelled a port, including default ports that the URL
+ * API clears from `url.port` (for example `http://127.0.0.1:80`). Only the
+ * authority is inspected, so a default-port marker inside the path (for
+ * example `ws://127.0.0.1/devtools/browser/127.0.0.1:80`) does not count.
+ */
+const urlDeclaresExplicitPort = (raw: string, url: URL): boolean => {
+  if (url.port !== "") return true;
+  const defaultPort = DEFAULT_PORT_BY_PROTOCOL[url.protocol];
+  if (defaultPort === undefined) return false;
+  const schemeEnd = raw.indexOf("://");
+  if (schemeEnd < 0) return false;
+  const rest = raw.slice(schemeEnd + 3);
+  const authorityEnd = rest.search(/[/?#]/);
+  const authority = authorityEnd < 0 ? rest : rest.slice(0, authorityEnd);
+  return authority.endsWith(`${url.hostname}:${defaultPort}`);
+};
+
+/**
+ * Authority with an explicitly spelled default port preserved, so recorded
+ * endpoints stay valid for reconciliation (#5178).
+ */
+const explicitPortAuthority = (url: URL, raw: string): string => {
+  if (url.port !== "") return url.host;
+  const defaultPort = DEFAULT_PORT_BY_PROTOCOL[url.protocol];
+  if (defaultPort === undefined || !urlDeclaresExplicitPort(raw, url))
+    return url.host;
+  return `${url.hostname}:${defaultPort}`;
+};
+
 /** Normalized origin of an accepted loopback CDP HTTP discovery endpoint. */
-const httpDiscoveryOrigin = (url: URL): string | undefined =>
+const httpDiscoveryOrigin = (url: URL, raw: string): string | undefined =>
   url.protocol === "http:" &&
   isLiteralLoopbackHostname(url.hostname) &&
-  url.port !== "" &&
+  urlDeclaresExplicitPort(raw, url) &&
   url.username === "" &&
   url.password === "" &&
   url.pathname === "/" &&
   !urlDeclaresQueryOrFragment(url)
-    ? url.origin
+    ? `${url.protocol}//${explicitPortAuthority(url, raw)}`
     : undefined;
 
 /** Scheme and authority of an accepted loopback CDP browser WebSocket. */
-const browserSocketAuthority = (url: URL): string | undefined => {
+const browserSocketAuthority = (url: URL, raw: string): string | undefined => {
   const id = url.pathname.slice(BROWSER_SOCKET_PATH.length);
   return url.protocol === "ws:" &&
     isLiteralLoopbackHostname(url.hostname) &&
-    url.port !== "" &&
+    urlDeclaresExplicitPort(raw, url) &&
     url.username === "" &&
     url.password === "" &&
     !urlDeclaresQueryOrFragment(url) &&
     url.pathname.startsWith(BROWSER_SOCKET_PATH) &&
     id.length > 0 &&
     !id.includes("/")
-    ? `${url.protocol}//${url.host}`
+    ? `${url.protocol}//${explicitPortAuthority(url, raw)}`
     : undefined;
 };
 
@@ -99,7 +137,7 @@ export const browserEndpointSchema = z
   .min(1)
   .transform((value, context) => {
     const url = URL.parse(value);
-    const origin = url === null ? undefined : httpDiscoveryOrigin(url);
+    const origin = url === null ? undefined : httpDiscoveryOrigin(url, value);
     if (origin !== undefined) return origin;
     context.addIssue({
       code: "custom",
@@ -132,10 +170,10 @@ export const browserObservationEndpointSchema = z
       context.addIssue({ code: "custom", message: "Invalid CDP endpoint URL" });
       return z.NEVER;
     }
-    const origin = httpDiscoveryOrigin(url);
+    const origin = httpDiscoveryOrigin(url, value);
     if (origin !== undefined)
       return { transport: "http_discovery", url: origin, recorded: origin };
-    const authority = browserSocketAuthority(url);
+    const authority = browserSocketAuthority(url, value);
     if (authority !== undefined)
       return {
         transport: "browser_websocket",
@@ -161,8 +199,8 @@ export const recordedBrowserObservationEndpointSchema = z
       const url = URL.parse(value);
       return (
         url !== null &&
-        (httpDiscoveryOrigin(url) !== undefined ||
-          (browserSocketAuthority(url) !== undefined &&
+        (httpDiscoveryOrigin(url, value) !== undefined ||
+          (browserSocketAuthority(url, value) !== undefined &&
             url.pathname === REDACTED_BROWSER_SOCKET_PATH))
       );
     },

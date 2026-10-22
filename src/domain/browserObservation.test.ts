@@ -11,6 +11,26 @@ import {
 } from "./browserObservation.js";
 
 describe("browser observation contracts", () => {
+  it("records captured endpoints in a form runtime reconciliation accepts (#5178)", () => {
+    // Runtime reconciliation re-validates Evidence `parameters.cdp_endpoint`
+    // with the recorded schema, so every accepted capture endpoint must
+    // round-trip, including explicitly spelled default ports.
+    for (const value of [
+      "http://127.0.0.1:9222",
+      "http://127.0.0.1:80",
+      "http://[::1]:80",
+      "ws://127.0.0.1:9222/devtools/browser/fixture",
+      "ws://127.0.0.1:80/devtools/browser/fixture",
+      "ws://[::1]:80/devtools/browser/fixture",
+    ]) {
+      const { recorded } = browserObservationEndpointSchema.parse(value);
+      expect(
+        recordedBrowserObservationEndpointSchema.safeParse(recorded).success,
+        `${value} -> ${recorded}`,
+      ).toBe(true);
+    }
+  });
+
   it("normalizes exact HTTP origins without accepting broader URL scopes", () => {
     expect(browserOriginSchema.parse("https://Example.COM:443")).toBe(
       "https://example.com",
@@ -51,10 +71,20 @@ describe("browser observation contracts", () => {
     expect(browserEndpointSchema.parse("http://[::1]:9222")).toBe(
       "http://[::1]:9222",
     );
+    // Explicit default ports: the URL API clears `url.port` for :80, but the
+    // caller spelled a port (#5178). The explicit port is preserved so the
+    // recorded endpoint stays valid for reconciliation.
+    expect(browserEndpointSchema.parse("http://127.0.0.1:80")).toBe(
+      "http://127.0.0.1:80",
+    );
+    expect(browserEndpointSchema.parse("http://[::1]:80")).toBe(
+      "http://[::1]:80",
+    );
     for (const value of [
       "http://localhost:9222",
       "http://192.168.1.2:9222",
       "https://127.0.0.1:9222",
+      "http://127.0.0.1",
       "http://127.0.0.1:9222/json/list",
       "http://127.0.0.1:9222/?",
       "http://127.0.0.1:9222/#",
@@ -80,6 +110,21 @@ describe("browser observation contracts", () => {
       url: "ws://[::1]:9222/devtools/browser/0b1c-socket-id",
       recorded: "ws://[::1]:9222/devtools/browser/[REDACTED]",
     });
+    expect(
+      browserObservationEndpointSchema.parse(
+        "ws://127.0.0.1:80/devtools/browser/fixture",
+      ),
+    ).toEqual({
+      transport: "browser_websocket",
+      url: "ws://127.0.0.1/devtools/browser/fixture",
+      recorded: "ws://127.0.0.1:80/devtools/browser/[REDACTED]",
+    });
+    // A default-port marker inside the path is not an explicit port (#5178).
+    expect(
+      browserObservationEndpointSchema.safeParse(
+        "ws://127.0.0.1/devtools/browser/127.0.0.1:80",
+      ).success,
+    ).toBe(false);
     for (const value of [
       "ws://127.0.0.1/devtools/browser/id",
       "ws://localhost:9222/devtools/browser/id",
@@ -103,11 +148,22 @@ describe("browser observation contracts", () => {
     for (const value of [
       "http://127.0.0.1:9222",
       "ws://127.0.0.1:9222/devtools/browser/[REDACTED]",
+      "http://127.0.0.1:80",
+      "ws://127.0.0.1:80/devtools/browser/[REDACTED]",
     ])
       expect(
         recordedBrowserObservationEndpointSchema.safeParse(value).success,
         value,
       ).toBe(true);
+    expect(
+      recordedBrowserObservationEndpointSchema.safeParse("http://127.0.0.1")
+        .success,
+    ).toBe(false);
+    expect(
+      recordedBrowserObservationEndpointSchema.safeParse(
+        "ws://127.0.0.1/devtools/browser/[REDACTED]",
+      ).success,
+    ).toBe(false);
     expect(
       recordedBrowserObservationEndpointSchema.safeParse(
         "ws://127.0.0.1:9222/devtools/browser/0b1c-socket-id",

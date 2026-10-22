@@ -1,4 +1,5 @@
 import { z } from "incur";
+import { javascriptRecoveryInputSchema } from "../domain/javascript/javascriptRecovery.js";
 import { JavaScriptRecoveryService } from "../application/javascript/JavaScriptRecoveryService.js";
 import { createJavaScriptRecoveryProvider } from "../composition/javascriptRecovery.js";
 import { CLI_COMMANDS } from "../cliCommandNames.js";
@@ -27,10 +28,8 @@ export const registerJavaScriptRecoveryCommands = (
       outputDirectory: z.string().describe("Absolute absent output directory"),
     }),
     options: z.object({
-      additionalPath: z
-        .array(z.string())
-        .optional()
-        .describe(
+      additionalPath:
+        javascriptRecoveryInputSchema.shape.additional_paths.describe(
           "Related absolute UTF-8 JavaScript file; repeat for multiple chunks",
         ),
       extractionMode: z

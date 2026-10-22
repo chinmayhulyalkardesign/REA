@@ -10,7 +10,10 @@ import type { CliInstance } from "./types.js";
 import { withCommandCancellation } from "./commandCancellation.js";
 import { absoluteCallerPath } from "../filesystem/callerPath.js";
 import { finishAnalysisCommand } from "./finishAnalysisCommand.js";
-import { inspectWasmArtifactInputSchema } from "../domain/wasm/wasmArtifact.js";
+import {
+  inspectWasmArtifactInputSchema,
+  MAX_WASM_ARTIFACT_PATHS,
+} from "../domain/wasm/wasmArtifact.js";
 
 /** Resolve all caller-selected artifact paths through the shared workflow. */
 export const registerWasmCommands = (
@@ -51,10 +54,12 @@ export const registerWasmCommands = (
       commandTimeoutMs: inspectWasmArtifactInputSchema.shape.command_timeout_ms,
       glue_paths: z
         .array(z.string())
+        .max(MAX_WASM_ARTIFACT_PATHS)
         .optional()
         .describe("Selected local JavaScript glue paths"),
       candidate_paths: z
         .array(z.string())
+        .max(MAX_WASM_ARTIFACT_PATHS)
         .optional()
         .describe("Explicit local WASM candidates"),
     }),

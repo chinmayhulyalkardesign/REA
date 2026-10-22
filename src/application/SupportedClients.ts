@@ -307,7 +307,8 @@ const OMP_RESERVED_PROFILE =
 /**
  * The OMP agent directory whose `mcp.json` holds user-scope MCP servers. OMP
  * joins PI_CONFIG_DIR to the home directory, and a named profile ignores
- * PI_CODING_AGENT_DIR. Relative overrides use the setup process working directory.
+ * PI_CODING_AGENT_DIR. Only a relative PI_CODING_AGENT_DIR override uses the
+ * setup process working directory; PI_CONFIG_DIR stays under the home directory.
  */
 const ompAgentDirectory = (context: ClientPathContext): ClientPathResult => {
   const root = join(context.home, context.env.PI_CONFIG_DIR || ".omp");

@@ -140,7 +140,6 @@ export const finalizeInspectorCapture = async ({
   if (locationMode === "reported")
     for (const draft of state.scripts) {
       const location = partialScriptLocation(draft.rawUrl);
-      if (location.kind === "unresolved") unresolvedScripts += 1;
       const script = scriptFromDraft(draft, location);
       scripts.set(script.script_key, script);
     }
@@ -151,6 +150,12 @@ export const finalizeInspectorCapture = async ({
         ? 1
         : 0,
   );
+  if (locationMode === "reported")
+    unresolvedScripts = items.reduce(
+      (count, script) =>
+        script.location.kind === "unresolved" ? count + 1 : count,
+      0,
+    );
   const contexts = [...state.contexts.values()]
     .map((context) => ({
       context_key: context.contextKey,

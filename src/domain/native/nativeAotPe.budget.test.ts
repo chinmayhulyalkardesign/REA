@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
 import type { NativeAotParserLimits } from "./nativeAotPe.js";
 import {
+  NATIVE_AOT_BASE_WORK_UNITS,
   NATIVE_AOT_MAX_REPORT_BYTES,
+  NATIVE_AOT_MAX_SOURCE_BYTES,
+  DEFAULT_NATIVE_AOT_PARSER_LIMITS,
+  nativeAotParserLimitsFor,
   parseNativeAotPe,
 } from "./nativeAotPe.js";
 import {
@@ -38,6 +42,82 @@ describe("NativeAOT parser resource budgets", () => {
       },
     });
     expect(report.coverage.source_bytes_omitted).toBeUndefined();
+  });
+});
+
+describe("NativeAOT work budget scaling", () => {
+  it("grows with the admitted image and stops at the source-byte ceiling", () => {
+    const small = nativeAotParserLimitsFor(1024);
+    const large = nativeAotParserLimitsFor(26_180_096);
+    expect(small.workUnits).toBeGreaterThan(NATIVE_AOT_BASE_WORK_UNITS);
+    expect(large.workUnits).toBeGreaterThan(small.workUnits);
+    // A real 26 MB NativeAOT image needs more than the 64 MiB base to finish scanning.
+    expect(large.workUnits).toBeGreaterThan(87_585_929);
+    expect(nativeAotParserLimitsFor(Number.MAX_SAFE_INTEGER)).toEqual(
+      DEFAULT_NATIVE_AOT_PARSER_LIMITS,
+    );
+    expect(DEFAULT_NATIVE_AOT_PARSER_LIMITS.sourceBytes).toBe(
+      NATIVE_AOT_MAX_SOURCE_BYTES,
+    );
+  });
+
+  it("resolves many descendants of one base without rescanning every candidate per base", () => {
+    const bytes = nativeAotPeFixture(9, 1, 1500);
+    const report = parseNativeAotPe(
+      bytes,
+      nativeAotPeDigest(bytes),
+      REPORT_BUDGET,
+      undefined,
+      {
+        sourceBytes: bytes.length,
+        // Rescanning 1500 candidates per included base would need about 18M units.
+        workUnits: 2_000_000,
+        workingMemoryBytes: 1024 * 1024,
+      },
+    ).summary;
+    expect(report.status).toBe("complete");
+    expect(report.method_tables).toBe(1503);
+    expect(report.truncated).toBeFalsy();
+  });
+});
+
+describe("NativeAOT base-type closure", () => {
+  const imageBase = 0x140000000n;
+  const rva = (value: number): bigint => imageBase + BigInt(value);
+  // Extra tables sit at 0x2400 + 0x20 * n in .rdata, which starts at file offset 0x600.
+  const fileOffset = (index: number): number => 0x600 + 0x400 + index * 0x20;
+  const tableRva = (index: number): bigint => rva(0x2400 + index * 0x20);
+
+  it("includes ancestors listed after descendants and tables reachable only through an interface", () => {
+    const bytes = nativeAotPeFixture(9, 1, 5);
+    const object = rva(0x2200);
+    const relate = (index: number, related: bigint): void => {
+      bytes.writeBigUInt64LE(related, fileOffset(index) + 8);
+    };
+    // Descending addresses: 0 -> 1 -> 2 -> object, each a child of the next.
+    relate(2, object);
+    relate(1, tableRva(2));
+    relate(0, tableRva(1));
+    // Table 3 hangs under table 4, which nothing in the object tree reaches.
+    relate(3, tableRva(4));
+    relate(4, 0n);
+    // Table 2 reaches table 3 only through its interface slot.
+    bytes.writeUInt16LE(1, fileOffset(2) + 18);
+    bytes.writeBigUInt64LE(tableRva(3), fileOffset(2) + 24);
+    const report = parseNativeAotPe(
+      bytes,
+      nativeAotPeDigest(bytes),
+      REPORT_BUDGET,
+    ).summary;
+    expect(report.status).toBe("complete");
+    // object, its two fixture children, tables 0-2, and table 3 through the interface.
+    expect(report.method_tables).toBe(7);
+    expect(report.types.map((type) => type.address)).toContain(
+      `0x${tableRva(3).toString(16)}`,
+    );
+    expect(report.types.map((type) => type.address)).not.toContain(
+      `0x${tableRva(4).toString(16)}`,
+    );
   });
 });
 

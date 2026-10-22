@@ -9,22 +9,41 @@ const FROZEN_OBJECT_REGION = 206;
 export const NATIVE_AOT_MAX_SOURCE_BYTES = 128 * 1024 * 1024;
 /** Bound one parser-produced JSON report independently of any transport. */
 export const NATIVE_AOT_MAX_REPORT_BYTES = 4 * 1024 * 1024;
-export const NATIVE_AOT_MAX_WORK_UNITS = 64 * 1024 * 1024;
+/** Work every image may use, covering header, directory and section handling. */
+export const NATIVE_AOT_BASE_WORK_UNITS = 64 * 1024 * 1024;
+/**
+ * Work added per admitted source byte. Discovery scans every byte of the
+ * data sections once; measured on a real 26 MB .NET 8 NativeAOT image the scan
+ * costs about 3.3 units per scanned byte, so this leaves headroom for
+ * validation without letting a fixed budget starve larger applications.
+ */
+export const NATIVE_AOT_WORK_UNITS_PER_SOURCE_BYTE = 8;
 export const NATIVE_AOT_MAX_WORKING_MEMORY_BYTES = 64 * 1024 * 1024;
 /** Version of the built-in read-only PE metadata interpretation in profiles. */
 export const NATIVE_AOT_PROFILE_CONTRACT_REVISION =
-  "rtr-9.1-x64-pe-read-only-v5";
+  "rtr-9.1-x64-pe-read-only-v6";
 
 export type NativeAotParserLimits = {
   readonly sourceBytes: number;
   readonly workUnits: number;
   readonly workingMemoryBytes: number;
 };
-export const DEFAULT_NATIVE_AOT_PARSER_LIMITS: NativeAotParserLimits = {
+
+/** Limits for one admitted image; the work budget follows its size. */
+export const nativeAotParserLimitsFor = (
+  sourceBytes: number,
+): NativeAotParserLimits => ({
   sourceBytes: NATIVE_AOT_MAX_SOURCE_BYTES,
-  workUnits: NATIVE_AOT_MAX_WORK_UNITS,
+  workUnits:
+    NATIVE_AOT_BASE_WORK_UNITS +
+    Math.min(sourceBytes, NATIVE_AOT_MAX_SOURCE_BYTES) *
+      NATIVE_AOT_WORK_UNITS_PER_SOURCE_BYTE,
   workingMemoryBytes: NATIVE_AOT_MAX_WORKING_MEMORY_BYTES,
-};
+});
+
+/** Ceiling of the scaled limits, reported when an image exceeds admission. */
+export const DEFAULT_NATIVE_AOT_PARSER_LIMITS: NativeAotParserLimits =
+  nativeAotParserLimitsFor(NATIVE_AOT_MAX_SOURCE_BYTES);
 
 class NativeAotParserBudget {
   workUnits = 0;
@@ -134,6 +153,8 @@ class MethodTableIndex {
   #records = Buffer.alloc(0);
   #count = 0;
   #includedCount = 0;
+  /** Candidate indices ordered by `related`, built once for base-type lookups. */
+  #byRelated = new Uint32Array(0);
 
   constructor(private readonly budget: NativeAotParserBudget) {}
 
@@ -204,6 +225,51 @@ class MethodTableIndex {
       this.#records.readBigUInt64LE(low * METHOD_TABLE_RECORD_BYTES) === address
       ? low
       : -1;
+  }
+
+  #relatedAt(index: number): bigint {
+    return this.#records.readBigUInt64LE(
+      index * METHOD_TABLE_RECORD_BYTES + 16,
+    );
+  }
+
+  /** Order candidates by base type so descendants are found without rescans. */
+  indexByRelated(): boolean {
+    const count = this.#count;
+    const sortWork = 8 * count * Math.max(1, Math.ceil(Math.log2(count + 1)));
+    if (!this.budget.consumeWork(sortWork)) return false;
+    if (!this.budget.reserveWorkingMemory(count * 4)) return false;
+    const order = new Uint32Array(count);
+    for (let index = 0; index < count; index++) order[index] = index;
+    order.sort((left, right) => {
+      const a = this.#relatedAt(left);
+      const b = this.#relatedAt(right);
+      return a < b ? -1 : a > b ? 1 : left - right;
+    });
+    this.#byRelated = order;
+    return true;
+  }
+
+  /** Visit candidates whose base type is `address`; false when work ran out. */
+  forEachRelatedTo(
+    address: bigint,
+    callback: (index: number) => void,
+  ): boolean {
+    let low = 0;
+    let high = this.#byRelated.length;
+    while (low < high) {
+      if (!this.budget.consumeWork(8)) return false;
+      const middle = low + ((high - low) >>> 1);
+      if (this.#relatedAt(this.#byRelated[middle]!) < address) low = middle + 1;
+      else high = middle;
+    }
+    for (; low < this.#byRelated.length; low++) {
+      const index = this.#byRelated[low]!;
+      if (this.#relatedAt(index) !== address) break;
+      if (!this.budget.consumeWork(8)) return false;
+      callback(index);
+    }
+    return true;
   }
 
   forEach(callback: (table: MethodTable, index: number) => void): void {
@@ -1164,53 +1230,49 @@ const discoverTables = (
       truncated,
     };
   candidates.include(objectRoot);
-  let changed = true;
-  while (changed && !truncated) {
-    changed = false;
-    candidates.forEach((base, baseIndex) => {
-      if (truncated || !candidates.isIncluded(baseIndex)) return;
-      for (
-        let candidateIndex = 0;
-        candidateIndex < candidates.count;
-        candidateIndex++
-      ) {
-        if (!budget.consumeWork(8)) {
-          truncated = true;
-          return;
-        }
-        const candidate = candidates.at(candidateIndex);
-        if (
-          candidate !== undefined &&
-          candidate.related === base.address &&
-          !candidates.isIncluded(candidateIndex)
-        ) {
-          candidates.include(candidateIndex);
-          changed = true;
-        }
+  // Each candidate joins once: its base type and interfaces are resolved
+  // through indexes, so the cost grows with candidates rather than their square.
+  const indexed =
+    candidates.indexByRelated() &&
+    budget.reserveWorkingMemory(
+      candidates.count * Uint32Array.BYTES_PER_ELEMENT,
+    );
+  if (!indexed) truncated = true;
+  const queue = new Uint32Array(indexed ? candidates.count : 0);
+  let head = 0;
+  let tail = 0;
+  if (indexed) queue[tail++] = objectRoot;
+  const enqueue = (index: number): void => {
+    if (candidates.isIncluded(index)) return;
+    candidates.include(index);
+    queue[tail++] = index;
+  };
+  while (head < tail && !truncated) {
+    const base = candidates.at(queue[head++]!);
+    if (base === undefined) continue;
+    if (!candidates.forEachRelatedTo(base.address, enqueue)) {
+      truncated = true;
+      break;
+    }
+    for (let index = 0; index < base.interfacesCount; index++) {
+      if (!budget.consumeWork(8)) {
+        truncated = true;
+        break;
       }
-      for (let index = 0; index < base.interfacesCount; index++) {
-        if (!budget.consumeWork(8)) {
-          truncated = true;
-          return;
-        }
-        const ifaceAddress = readU64(
-          image.read(
-            base.address + 24n + BigInt((base.slotsCount + index) * 8),
-            8,
-          ),
-        );
-        if (ifaceAddress === null) continue;
-        const interfaceIndex = candidates.find(ifaceAddress, budget);
-        if (budget.truncationReason !== undefined) {
-          truncated = true;
-          return;
-        }
-        if (interfaceIndex >= 0 && !candidates.isIncluded(interfaceIndex)) {
-          candidates.include(interfaceIndex);
-          changed = true;
-        }
+      const ifaceAddress = readU64(
+        image.read(
+          base.address + 24n + BigInt((base.slotsCount + index) * 8),
+          8,
+        ),
+      );
+      if (ifaceAddress === null) continue;
+      const interfaceIndex = candidates.find(ifaceAddress, budget);
+      if (budget.truncationReason !== undefined) {
+        truncated = true;
+        break;
       }
-    });
+      if (interfaceIndex >= 0) enqueue(interfaceIndex);
+    }
   }
   return {
     tables: candidates,
@@ -1230,7 +1292,7 @@ export const parseNativeAotPe = (
   expectedSha256: string,
   maximumSummaryBytes: number,
   loadedImageBase?: string,
-  limits = DEFAULT_NATIVE_AOT_PARSER_LIMITS,
+  limits = nativeAotParserLimitsFor(bytes.byteLength),
 ): NativeAotPeResult => {
   if (!Number.isSafeInteger(maximumSummaryBytes) || maximumSummaryBytes < 0)
     throw new Error(

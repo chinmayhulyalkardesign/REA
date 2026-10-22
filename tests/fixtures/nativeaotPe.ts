@@ -6,8 +6,17 @@ const address = (rva: number): bigint => IMAGE_BASE + BigInt(rva);
 export const nativeAotPeDigest = (bytes: Buffer): string =>
   createHash("sha256").update(bytes).digest("hex");
 
-export const nativeAotPeFixture = (major = 9, minor = 1): Buffer => {
-  const bytes = Buffer.alloc(0xa00);
+/**
+ * Room for `extraTables` additional leaf MethodTables after the frozen region;
+ * the image size grows to hold them.
+ */
+export const nativeAotPeFixture = (
+  major = 9,
+  minor = 1,
+  extraTables = 0,
+): Buffer => {
+  const extraBytes = extraTables * 0x20;
+  const bytes = Buffer.alloc(0xa00 + extraBytes);
   bytes.write("MZ", 0, "ascii");
   bytes.writeUInt32LE(0x80, 0x3c);
   bytes.write("PE\0\0", 0x80, "ascii");
@@ -17,7 +26,10 @@ export const nativeAotPeFixture = (major = 9, minor = 1): Buffer => {
   const optional = 0x98;
   bytes.writeUInt16LE(0x20b, optional);
   bytes.writeBigUInt64LE(IMAGE_BASE, optional + 24);
-  bytes.writeUInt32LE(0x3000, optional + 56);
+  bytes.writeUInt32LE(
+    Math.ceil((0x2400 + extraBytes) / 0x1000) * 0x1000,
+    optional + 56,
+  );
   bytes.writeUInt32LE(0x400, optional + 60);
   const sectionTable = optional + 0xf0;
   bytes.write(".text", sectionTable, "ascii");
@@ -28,9 +40,9 @@ export const nativeAotPeFixture = (major = 9, minor = 1): Buffer => {
   bytes.writeUInt32LE(0x60000020, sectionTable + 36);
   const data = sectionTable + 40;
   bytes.write(".rdata", data, "ascii");
-  bytes.writeUInt32LE(0x400, data + 8);
+  bytes.writeUInt32LE(0x400 + extraBytes, data + 8);
   bytes.writeUInt32LE(0x2000, data + 12);
-  bytes.writeUInt32LE(0x400, data + 16);
+  bytes.writeUInt32LE(0x400 + extraBytes, data + 16);
   bytes.writeUInt32LE(0x600, data + 20);
   bytes.writeUInt32LE(0x40000040, data + 36);
 
@@ -80,6 +92,9 @@ export const nativeAotPeFixture = (major = 9, minor = 1): Buffer => {
   ]);
   writeMethodTable(0x2280, 0x50000000, 0x20, object, [address(0x1040)]);
   writeMethodTable(0x22c0, 0x50000000, 0x16, object, []);
+
+  for (let index = 0; index < extraTables; index++)
+    writeMethodTable(0x2400 + index * 0x20, 0x50000000, 0x16, object, []);
 
   const frozen = 0x600 + 0x2300 - 0x2000;
   bytes.writeBigUInt64LE(address(0x22c0), frozen);

@@ -1,4 +1,5 @@
 import { analysisDetailSchema } from "./analysisDetail.js";
+import { compatibleToolInputSchema } from "./inputKeyAliases.js";
 import { z } from "zod";
 import { nativeFunctionAnnotationsInputSchema } from "../domain/native/nativeFunctionAnnotations.js";
 
@@ -27,7 +28,7 @@ const official = <Name extends string, Schema extends z.ZodObject>(
   description: string,
   inputSchema: Schema,
 ) => {
-  const strictInputSchema = inputSchema.strict();
+  const strictInputSchema = compatibleToolInputSchema(inputSchema.strict());
   return {
     name,
     ...toolContractMetadata(name),

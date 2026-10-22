@@ -314,7 +314,8 @@ const resolveInternalSpecifier = (
       : { to: normalized, resolution: "unresolved" };
   const resolvedThroughIndex =
     posix.basename(match).startsWith("index.") &&
-    posix.dirname(match).normalize("NFC") === normalized.normalize("NFC");
+    posix.dirname(match).normalize("NFC") ===
+      normalized.replace(/(?<=.)\/+$/u, "").normalize("NFC");
   return resolvedThroughIndex
     ? selectPackageMain(posix.dirname(match), match, context, mode)
     : { to: match, resolution: "internal" };

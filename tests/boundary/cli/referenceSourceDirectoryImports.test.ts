@@ -37,6 +37,7 @@ const prepareReferenceSourceDirectoryFixture =
       ["legacy-order.cjs", "./dep", "dep/index.js"],
       ["bare-index.cjs", "./bare", "bare.js"],
       ["package-main.cjs", "./pkg", "pkg/actual.js"],
+      ["package-main-dir.cjs", "./pkg/", "pkg/actual.js"],
       ["package-main-no-index.cjs", "./no-index-pkg", "no-index-pkg/actual.js"],
       ["package-main-fallback.cjs", "./stale", "stale/index.js"],
       ["typed-index-collision.cjs", "./typed", "typed.js"],

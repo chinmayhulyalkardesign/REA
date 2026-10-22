@@ -5,7 +5,7 @@
 
 # REA: Reverse Engineer Anything
 
-### One MCP for reverse engineering across binaries, applications, and runtime behavior.
+### One MCP for reverse engineering across binaries, applications, and runtime behavior!!!
 
 **See a feature you like. Understand how it works, down to the binary level.**
 

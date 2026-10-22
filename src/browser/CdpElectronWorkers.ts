@@ -5,7 +5,11 @@ import type {
 } from "../domain/javascript/electronObservation.js";
 import type { CdpConnection } from "./CdpConnection.js";
 import { CdpCaptureCompleteness } from "./CdpCaptureCompleteness.js";
-import { recordValue, cdpStringValue } from "./CdpCaptureValues.js";
+import {
+  admitRecords,
+  recordValue,
+  cdpStringValue,
+} from "./CdpCaptureValues.js";
 import type { CdpEndpointTarget } from "./CdpEndpoint.js";
 import { optionalCdpCommand } from "./CdpOptionalCommand.js";
 import { authorizedElectronFile } from "./ElectronFileScope.js";
@@ -39,19 +43,25 @@ export const captureElectronWorkers = async (input: {
   }
   const workers: ElectronPageInspection["workers"] = [];
   // A missing target list or a non-record entry is unreadable, not empty.
-  const targetInfos = recordValue(result)?.targetInfos;
-  if (!Array.isArray(targetInfos)) {
+  const targetInfos = admitRecords(recordValue(result)?.targetInfos);
+  if (targetInfos === undefined) {
     input.completeness.exclude("workers", "invalid_protocol_value", null);
     return [];
   }
+  let malformedEntries = 0;
   for (const entry of targetInfos) {
     throwIfElectronWorkerCaptureCancelled(input.signal);
     const target = recordValue(entry);
     if (target === undefined) {
-      input.completeness.exclude("workers", "invalid_protocol_value");
+      malformedEntries += 1;
       continue;
     }
-    const type = cdpStringValue(target.type) ?? "";
+    // An undecodable discriminator cannot prove the entry is not a worker.
+    const type = cdpStringValue(target.type);
+    if (type === undefined || type.length === 0) {
+      malformedEntries += 1;
+      continue;
+    }
     if (!type.includes("worker")) continue;
     const openerTargetId = boundedTargetField(target.openerId);
     const parentFrameId = boundedTargetField(target.parentFrameId);
@@ -74,11 +84,11 @@ export const captureElectronWorkers = async (input: {
     }
     const targetId = boundedTargetField(target.targetId);
     if (targetId === null) {
-      input.completeness.exclude("workers", "invalid_protocol_value");
+      malformedEntries += 1;
       continue;
     }
     if (typeof target.attached !== "boolean") {
-      input.completeness.exclude("workers", "invalid_protocol_value");
+      malformedEntries += 1;
       continue;
     }
     workers.push({
@@ -90,6 +100,12 @@ export const captureElectronWorkers = async (input: {
       parent_frame_id: parentFrameId,
     });
   }
+  if (malformedEntries > 0)
+    input.completeness.exclude(
+      "workers",
+      "invalid_protocol_value",
+      malformedEntries,
+    );
   return workers.sort((left, right) =>
     compareUnicodeCodePoints(left.target_id, right.target_id),
   );

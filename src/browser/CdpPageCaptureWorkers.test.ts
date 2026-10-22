@@ -43,6 +43,22 @@ const capture = async (inventory: unknown) => {
   return { workers, completeness: events.completeness.snapshot() };
 };
 
+/** A page-owned worker `TargetInfo` with no `type` discriminator at all. */
+const targetWithoutType = () => ({
+  targetId: "worker-1",
+  url: `${origin}/worker.js`,
+  openerId: "page",
+  attached: true,
+});
+
+const workerTarget = (
+  over: Readonly<Record<string, unknown>> = {},
+): Readonly<Record<string, unknown>> => ({
+  ...targetWithoutType(),
+  type: "service_worker",
+  ...over,
+});
+
 describe("web worker target inventory", () => {
   it("preserves an explicit empty inventory", async () => {
     const result = await capture({ targetInfos: [] });
@@ -74,13 +90,7 @@ describe("web worker target inventory", () => {
     const result = await capture({
       targetInfos: [
         null,
-        {
-          targetId: "worker-1",
-          type: "service_worker",
-          url: `${origin}/worker.js`,
-          attached: true,
-          openerId: "page",
-        },
+        workerTarget(),
         {
           targetId: "worker-missing-url",
           type: "worker",
@@ -122,6 +132,42 @@ describe("web worker target inventory", () => {
         section: "workers",
         reason: "out_of_target_scope",
       }),
+    );
+  });
+
+  it.each([
+    ["absent", undefined],
+    ["null", null],
+    ["numeric", 42],
+    ["empty", ""],
+  ] as const)(
+    "records a target entry whose type is %s instead of deciding it is not a worker",
+    async (label, type) => {
+      const result = await capture({
+        targetInfos: [
+          label === "absent" ? targetWithoutType() : workerTarget({ type }),
+        ],
+      });
+
+      expect(result.workers).toEqual([]);
+      expect(result.completeness.unavailable_sections).toContain("workers");
+      expect(result.completeness.excluded).toContainEqual({
+        section: "workers",
+        reason: "invalid_protocol_value",
+        count: 1,
+      });
+    },
+  );
+
+  it("keeps a decodable non-worker type out of the malformed ledger", async () => {
+    const result = await capture({
+      targetInfos: [workerTarget({ type: "page" })],
+    });
+
+    expect(result.workers).toEqual([]);
+    expect(result.completeness.unavailable_sections).not.toContain("workers");
+    expect(result.completeness.excluded).not.toContainEqual(
+      expect.objectContaining({ section: "workers" }),
     );
   });
 });

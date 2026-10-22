@@ -52,7 +52,13 @@ const addNativeBinding = (input: NativeBindingInput): void => {
     value.module_kind,
     context.directoryPaths,
   );
-  const addon = resolved === null ? undefined : context.fileNodes.get(resolved);
+  // Extension probing can resolve `./addon.node` to `addon.node.js`; only a
+  // native-addon artifact can expose the requested binding.
+  const addon =
+    resolved === null ||
+    context.filesByPath.get(resolved)?.kind !== "native-addon"
+      ? undefined
+      : context.fileNodes.get(resolved);
   const binding = context.accumulator.addNode({
     kind: "native-export",
     identity: electronObservationIdentity(

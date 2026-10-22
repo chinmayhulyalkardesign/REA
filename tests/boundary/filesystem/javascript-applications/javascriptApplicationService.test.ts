@@ -82,6 +82,67 @@ describe("JavaScript source selection cancellation boundary", () => {
       await reader.close();
     }
   });
+
+  it("preserves invalid-utf8 text failure reasons across cancellation", async () => {
+    const root = await createTestTempDirectory("rea-js-invalid-cancellation-");
+    await writeFile(
+      join(root, "invalid.js"),
+      Buffer.from([0xef, 0xbb, 0xbf, 0xff]),
+    );
+    const snapshot = await scanCanonicalArtifactInventory(root, {});
+    const reader = createJavaScriptArtifactReader(root, "directory");
+    const controller = new AbortController();
+    try {
+      const files = await readJavaScriptArtifactFiles(
+        reader,
+        snapshot,
+        controller.signal,
+      );
+      const worker = await createJavaScriptSourceAnalysis(
+        { heapMb: 512, timeoutMs: 30_000 },
+        1,
+      );
+      let outcome: Awaited<
+        ReturnType<typeof analyzeAndAdoptJavaScriptArtifactFiles>
+      >;
+      const projection = createJavaScriptSemanticGraphProjection();
+      try {
+        controller.abort();
+        outcome = await analyzeAndAdoptJavaScriptArtifactFiles(
+          files,
+          worker,
+          projection,
+          async () => {},
+          controller.signal,
+        );
+      } finally {
+        await worker.close();
+      }
+      expect(outcome.interruption).toBeInstanceOf(AnalysisCancelledError);
+      const invalidFile = outcome.analysis.files.find(
+        ({ file }) => file.path === "invalid.js",
+      );
+      expect(invalidFile?.file.text).toEqual({
+        included: false,
+        reason: "invalid-utf8",
+      });
+      expect(invalidFile?.analysis_failure).toBeUndefined();
+      const graph = projection.finish(snapshot.manifest.root_sha256, {
+        graph_id: `jag_${snapshot.manifest.root_sha256}`,
+        nodes: [],
+      });
+      const unknown = graph.unknowns.find(
+        ({ node_id }) =>
+          graph.nodes.find(({ node_id: id }) => id === node_id)?.identity
+            .module_path === "invalid.js",
+      );
+      expect(unknown?.detail).toBe(
+        "JavaScript text was unavailable: invalid-utf8.",
+      );
+    } finally {
+      await reader.close();
+    }
+  });
 });
 
 describe("Selected JavaScript source failure diagnostics", () => {

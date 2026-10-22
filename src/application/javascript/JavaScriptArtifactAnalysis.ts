@@ -18,9 +18,10 @@ import {
 import type { SourceMapLeaf } from "../../domain/sourceMapEnvelope.js";
 import type { JavaScriptStaticAnalysis } from "../../domain/javascript/javascriptStaticAnalysisTypes.js";
 import { failedJavaScriptStaticAnalysis } from "../../domain/javascript/javascriptStaticAnalysisHelpers.js";
-import type {
-  JavaScriptArtifactFile,
-  JavaScriptArtifactFileSet,
+import {
+  type JavaScriptArtifactFile,
+  type JavaScriptArtifactFileSet,
+  unavailableJavaScriptSourceReason,
 } from "../../domain/javascript/javascriptArtifactFiles.js";
 import type {
   AnalyzedJavaScriptArtifactFile,
@@ -92,10 +93,15 @@ export const analyzeJavaScriptArtifactFiles = (
  */
 export const analyzeAndProjectJavaScriptArtifactFiles = async (
   fileSet: JavaScriptArtifactFileSet,
-  projectSemantics: (
-    file: JavaScriptArtifactFile,
-    ir: JavaScriptSemanticIr,
-  ) => Iterator<void, void> | void,
+  projectSemantics:
+    | ((
+        file: JavaScriptArtifactFile,
+        ir: JavaScriptSemanticIr,
+      ) => Iterator<void, void> | void)
+    | Pick<
+        JavaScriptSemanticGraphProjection,
+        "projectFile" | "recordUnavailableFile"
+      >,
   beforeFile?: (
     file: JavaScriptArtifactFile,
     completed: number,
@@ -104,11 +110,22 @@ export const analyzeAndProjectJavaScriptArtifactFiles = async (
   signal?: AbortSignal,
 ): Promise<JavaScriptModuleArtifactAnalysis> => {
   const state = emptyArtifactAnalysis<JavaScriptModuleSemanticIr>();
+  const projectFn =
+    typeof projectSemantics === "function"
+      ? projectSemantics
+      : projectSemantics.projectFile.bind(projectSemantics);
+  const recordUnavailable =
+    typeof projectSemantics === "function"
+      ? "recordUnavailableFile" in projectSemantics &&
+        typeof projectSemantics.recordUnavailableFile === "function"
+        ? (projectSemantics.recordUnavailableFile as JavaScriptSemanticGraphProjection["recordUnavailableFile"])
+        : undefined
+      : projectSemantics.recordUnavailableFile.bind(projectSemantics);
   const projectFileSemantics = function* (
     file: JavaScriptArtifactFile,
     ir: JavaScriptSemanticIr,
   ): Generator<void, JavaScriptModuleSemanticIr> {
-    const projection = projectSemantics(file, ir);
+    const projection = projectFn(file, ir);
     if (projection !== undefined) while (projection.next().done !== true) yield;
     return projectJavaScriptModuleSemantics(ir);
   };
@@ -121,6 +138,13 @@ export const analyzeAndProjectJavaScriptArtifactFiles = async (
       analyzeArtifactFileSteps(file, context),
       signal,
     );
+    if (file.kind === "javascript" && !file.text.included)
+      recordUnavailable?.(
+        file,
+        unavailableJavaScriptSourceReason(file.text.reason),
+        null,
+        "incomplete-module",
+      );
   }
   return finalizeArtifactAnalysis(state);
 };
@@ -158,11 +182,27 @@ export const analyzeAndAdoptJavaScriptArtifactFiles = async (
         }
         continue;
       }
+      if (file.kind === "javascript" && !file.text.included) {
+        state.files.push({ file, javascript: null, semantic: null });
+        projection.recordUnavailableFile(
+          file,
+          unavailableJavaScriptSourceReason(file.text.reason),
+          null,
+          "incomplete-module",
+        );
+        if (signal?.aborted === true) {
+          interruption = new AnalysisCancelledError(
+            "analyze_javascript_application",
+          );
+          break;
+        }
+        continue;
+      }
       if (signal?.aborted === true)
         throw new AnalysisCancelledError("analyze_javascript_application");
       await beforeFile(file, selectedFileIndex++, selectedFileCount);
       analysisStarted = true;
-      if (file.kind !== "javascript" || !file.text.included) {
+      if (file.kind !== "javascript") {
         const steps = analyzeArtifactFileSteps(file, {
           state,
           projectSemantics: function* (_file, ir) {
@@ -254,29 +294,39 @@ export const analyzeAndAdoptJavaScriptArtifactFiles = async (
             ? cause
             : null;
       if (interruption !== null) {
-        const scope = javascriptArtifactAnalysisScopes[file.kind];
-        state.files.push({
-          file,
-          javascript: null,
-          semantic: null,
-          ...(scope === null
-            ? {}
-            : {
-                analysis_failure: {
-                  scope,
-                  status: analysisStarted ? "interrupted" : "not-started",
-                  reason: `${file.path}: ${interruption.message}`,
-                  error: projectAnalysisError(interruption),
-                  limits: null,
-                },
-              }),
-        });
-        projection.recordUnavailableFile(
-          file,
-          interruption.message,
-          null,
-          "incomplete-module",
-        );
+        if (file.kind === "javascript" && !file.text.included) {
+          state.files.push({ file, javascript: null, semantic: null });
+          projection.recordUnavailableFile(
+            file,
+            unavailableJavaScriptSourceReason(file.text.reason),
+            null,
+            "incomplete-module",
+          );
+        } else {
+          const scope = javascriptArtifactAnalysisScopes[file.kind];
+          state.files.push({
+            file,
+            javascript: null,
+            semantic: null,
+            ...(scope === null
+              ? {}
+              : {
+                  analysis_failure: {
+                    scope,
+                    status: analysisStarted ? "interrupted" : "not-started",
+                    reason: `${file.path}: ${interruption.message}`,
+                    error: projectAnalysisError(interruption),
+                    limits: null,
+                  },
+                }),
+          });
+          projection.recordUnavailableFile(
+            file,
+            interruption.message,
+            null,
+            "incomplete-module",
+          );
+        }
       }
       break;
     }
@@ -302,6 +352,16 @@ export const analyzeAndAdoptJavaScriptArtifactFiles = async (
     for (const file of fileSet.files) {
       if (analyzedPaths.has(file.path)) continue;
       if (classifyOutsideAnalysisScope(file, state, projection)) continue;
+      if (file.kind === "javascript" && !file.text.included) {
+        state.files.push({ file, javascript: null, semantic: null });
+        projection.recordUnavailableFile(
+          file,
+          unavailableJavaScriptSourceReason(file.text.reason),
+          null,
+          "incomplete-module",
+        );
+        continue;
+      }
       const scope = javascriptArtifactAnalysisScopes[file.kind];
       let unavailable = scope === null ? undefined : failures.get(scope);
       if (scope !== null && unavailable === undefined) {
@@ -452,7 +512,7 @@ const classifyOutsideAnalysisScope = <
   state.files.push({ file, javascript: null, semantic: null });
   projection?.recordUnavailableFile(
     file,
-    "Source was not analyzed because it is outside the caller-selected source_paths.",
+    unavailableJavaScriptSourceReason(file.text.reason),
     null,
     "incomplete-module",
   );

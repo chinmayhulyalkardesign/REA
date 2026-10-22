@@ -108,5 +108,24 @@ for (const format of ["directory", "asar"] as const) {
             properties.text_status === "invalid-utf8",
         ),
       ).toBe(true);
+    expect(
+      result.semantic_graph.nodes.some(
+        ({ kind, identity }) =>
+          kind === "module" && identity.module_path === "invalid.js",
+      ),
+    ).toBe(true);
+    expect(result.semantic_graph.coverage).toMatchObject({
+      status: "partial",
+      truncated: false,
+      omitted_nodes: null,
+      omitted_relations: null,
+    });
+    expect(
+      result.semantic_graph.unknowns.filter(
+        ({ reason, detail }) =>
+          reason === "incomplete-module" &&
+          detail === "JavaScript text was unavailable: invalid-utf8.",
+      ),
+    ).toHaveLength(12);
   });
 }

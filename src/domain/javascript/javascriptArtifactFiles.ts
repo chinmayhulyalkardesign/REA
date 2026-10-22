@@ -14,6 +14,19 @@ export type JavaScriptArtifactFileKind =
   | "source-map"
   | "native-addon";
 
+export type JavaScriptArtifactExcludedTextReason =
+  | "not-applicable"
+  | "invalid-utf8"
+  | "outside-analysis-scope";
+
+/** Canonical explanation of unavailable JavaScript source text. */
+export const unavailableJavaScriptSourceReason = (
+  reason: JavaScriptArtifactExcludedTextReason,
+): string =>
+  reason === "outside-analysis-scope"
+    ? "Source was not analyzed because it is outside the caller-selected source_paths."
+    : `JavaScript text was unavailable: ${reason}.`;
+
 /** One content-addressed local artifact file and its text availability. */
 export interface JavaScriptArtifactFile {
   readonly path: string;
@@ -27,10 +40,7 @@ export interface JavaScriptArtifactFile {
     | { readonly included: true; readonly value: string }
     | {
         readonly included: false;
-        readonly reason:
-          | "not-applicable"
-          | "invalid-utf8"
-          | "outside-analysis-scope";
+        readonly reason: JavaScriptArtifactExcludedTextReason;
       };
 }
 

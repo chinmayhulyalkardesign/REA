@@ -663,6 +663,46 @@ it("preserves graph commitments and export shapes when consuming file-local IR",
   }
 });
 
+it("preserves unavailable JavaScript sources identically between compact and full projection paths", async () => {
+  const root = await fixtureDirectory();
+  await writeFile(join(root, "valid.js"), "export const a = 1;\n");
+  await writeFile(
+    join(root, "invalid.js"),
+    Buffer.from([0xef, 0xbb, 0xbf, 0xff]),
+  );
+  const snapshot = await scanCanonicalArtifactInventory(root, {});
+  const reader = createJavaScriptArtifactReader(root, "directory");
+  try {
+    const files = await readJavaScriptArtifactFiles(reader, snapshot);
+    const full = analyzeJavaScriptArtifactFiles(files);
+    const projection = createJavaScriptSemanticGraphProjection();
+    const compact = await analyzeAndProjectJavaScriptArtifactFiles(
+      files,
+      projection.projectFile,
+    );
+    const graph = buildJavaScriptArtifactGraph(snapshot, files, full);
+    expect(buildJavaScriptArtifactGraph(snapshot, files, compact)).toEqual(
+      graph,
+    );
+    const semantic = projection.finish(snapshot.manifest.root_sha256, graph);
+    expect(semantic).toEqual(
+      buildJavaScriptSemanticGraph({
+        rootArtifactSha256: snapshot.manifest.root_sha256,
+        applicationGraph: graph,
+        analysis: full,
+      }),
+    );
+    expect(
+      semantic.nodes.some(
+        ({ kind, identity }) =>
+          kind === "module" && identity.module_path === "invalid.js",
+      ),
+    ).toBe(true);
+  } finally {
+    await reader.close();
+  }
+});
+
 const rejectInvalidTransfer = async (
   wirePath: string,
   descriptor: Awaited<ReturnType<typeof writeJavaScriptAnalysisTransfer>>,

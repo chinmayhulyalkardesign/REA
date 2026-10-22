@@ -40,7 +40,7 @@ export const createJadxProtocolFixture = async (
   await mkdir(javaBin, { recursive: true });
   await writeFile(
     java,
-    `#!/usr/bin/env node\nif (process.argv[2] === "--list-modules") { require("node:fs").appendFileSync(${JSON.stringify(javaProbeLog)}, "probe\\n"); console.log("java.base@21.0.0\\njdk.compiler@21.0.0"); }\n`,
+    `#!/usr/bin/env node\nif (process.argv.slice(2).join(" ") === "-XX:-UsePerfData --list-modules") { require("node:fs").appendFileSync(${JSON.stringify(javaProbeLog)}, "probe\\n"); console.log("java.base@21.0.0\\njdk.compiler@21.0.0"); }\n`,
   );
   await chmod(java, 0o755);
   await writeOrderedZip(apk, ["AndroidManifest.xml", "classes.dex"]);

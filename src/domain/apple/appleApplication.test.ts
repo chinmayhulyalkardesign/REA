@@ -544,6 +544,39 @@ describe("Apple bundle layouts and containers", () => {
 });
 
 describe("Apple IPA components", () => {
+  it("preserves IPA framework descendants outside application roots", () => {
+    const rooted =
+      "Payload/Fixture.app/Frameworks/Core.FRAMEWORK/Versions/A/Core";
+    const archived = "SwiftSupport/iphoneos/Support.fRaMeWoRk/Support";
+    const result = project(
+      inventoryEvidence("ipa", "Fixture.ipa", [
+        macho("Payload/Fixture.app/Fixture"),
+        macho(rooted),
+        macho(archived),
+        macho("SwiftSupport/iphoneos/Decoy.framework2/Decoy"),
+        { path: "SwiftSupport/iphoneos/Standalone.framework" },
+        { path: "SwiftSupport/iphoneos/Support.fRaMeWoRk/._Support" },
+      ]),
+    );
+    expect(result.application_roots).toEqual(["Payload/Fixture.app"]);
+    expect(
+      result.bundles.find(({ path }) => path.endsWith("Core.FRAMEWORK"))?.role,
+    ).toBe("framework");
+    expect(
+      result.bundles.some(({ path }) => path.startsWith("SwiftSupport/")),
+    ).toBe(false);
+    expect(
+      result.components.frameworks.map(({ path, sha256 }) => ({
+        path,
+        sha256,
+      })),
+    ).toEqual(
+      [rooted, archived]
+        .sort(compareUnicodeCodePoints)
+        .map((path) => ({ path, sha256: sha(`file:${path}`) })),
+    );
+  });
+
   it("excludes AppleDouble sidecars from IPA components", () => {
     const result = project(
       inventoryEvidence("ipa", "Fixture.ipa", [
@@ -572,6 +605,39 @@ describe("Apple IPA components", () => {
 });
 
 describe("macOS application scope", () => {
+  it("classifies files inside uppercase and lowercase framework bundles", () => {
+    const root = "Fixture.app/Contents/Frameworks";
+    const upper = `${root}/VerifyKit.FRAMEWORK`;
+    const lower = `${root}/Other.framework`;
+    const upperPlist = `${upper}/Info.plist`;
+    const upperImage = `${upper}/VerifyKit`;
+    const lowerImage = `${lower}/Other`;
+    const result = project(
+      inventoryEvidence("zip", "Fixture.zip", [
+        macho("Fixture.app/Contents/MacOS/Fixture"),
+        { path: upperPlist, format: "plist" },
+        macho(upperImage),
+        macho(lowerImage),
+        macho(`${root}/Decoy.framework2/Decoy`),
+        { path: "Fixture.app/Contents/Resources/Standalone.framework" },
+      ]),
+    );
+    expect(result.bundles.find(({ path }) => path === upper)?.role).toBe(
+      "framework",
+    );
+    expect(
+      result.components.frameworks.map(({ path, sha256 }) => ({
+        path,
+        sha256,
+      })),
+    ).toEqual(
+      [upperPlist, upperImage, lowerImage]
+        .sort(compareUnicodeCodePoints)
+        .map((path) => ({ path, sha256: sha(`file:${path}`) })),
+    );
+    expect(result.coverage.status).toBe("complete-within-inventory");
+  });
+
   it("attributes only components inside the application roots", () => {
     const result = project(
       inventoryEvidence("zip", "Distribution.zip", [

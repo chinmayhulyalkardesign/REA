@@ -111,6 +111,19 @@ export const projectAppleBundleAnatomy = (
 };
 
 /**
+ * Framework ancestry uses the same bundle admission and role as anatomy.
+ * Ancestors need not belong to an application root: IPA attribution also
+ * includes archive components outside Payload/. The leaf is never a bundle.
+ */
+export const anatomyHasFrameworkAncestor = (path: string): boolean =>
+  path
+    .split("/")
+    .slice(0, -1)
+    .some(
+      (name) => BUNDLE_EXTENSION.test(name) && bundleRole(name) === "framework",
+    );
+
+/**
  * Outermost iOS (`Payload/X.app`) and macOS (`X.app/Contents/…`) applications.
  * An inventoried `.app` directory is its own root, `.`.
  */

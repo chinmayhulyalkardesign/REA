@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { Cli } from "incur";
 import { afterEach, expect, it, vi } from "vitest";
 
+import * as evidenceInputResolver from "../../src/application/EvidenceInputResolver.js";
 import * as analysisViewService from "../../src/application/analysisView/AnalysisViewService.js";
 import { WasmArtifactService } from "../../src/application/wasm/WasmArtifactService.js";
 import { registerAnalysisViewCommands } from "../../src/cli/analysisViewCommands.js";
@@ -213,14 +214,31 @@ it.each([
         });
       });
     };
-    const originalProject = analysisViewService.inspectAnalysisViewValidated;
-    let projected: ReturnType<typeof originalProject> | undefined;
+    const projected =
+      phase === "projection"
+        ? analysisViewService.inspectAnalysisViewValidated(
+            {
+              source: {
+                kind: "retained-evidence",
+                evidence_id: parent.evidence_id,
+              },
+              view: { kind: "summary" },
+            },
+            (id) => (id === parent.evidence_id ? parent : undefined),
+          )
+        : undefined;
+    // This external source-resolution boundary is shared by bundle projection
+    // before and after service consolidation. Spying on the service's own
+    // export cannot observe its internal calls after that consolidation.
+    const originalResolve = evidenceInputResolver.resolveEvidenceInput;
     const project = vi
-      .spyOn(analysisViewService, "inspectAnalysisViewValidated")
+      .spyOn(evidenceInputResolver, "resolveEvidenceInput")
       .mockImplementation((...args) => {
-        projected = originalProject(...args);
+        const resolved = originalResolve(...args);
+        // Projection remains synchronous after source resolution, so the
+        // queued interrupt is dispatched after the completed projection.
         if (phase.startsWith("projection")) queueInterrupt();
-        return projected;
+        return resolved;
       });
     const originalClose = OwnedFileHandle.prototype.close;
     const close = vi

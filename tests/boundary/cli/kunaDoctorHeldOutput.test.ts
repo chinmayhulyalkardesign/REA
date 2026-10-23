@@ -1,6 +1,5 @@
 import { chmod, mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { setTimeout as delay } from "node:timers/promises";
 import { expect } from "vitest";
 import { z } from "zod";
 
@@ -30,6 +29,7 @@ const child = spawn(process.execPath, ["-e", ${JSON.stringify(
         `process.on("SIGTERM", () => {}); setTimeout(() => process.exit(0), 28000);`,
       )}], { stdio: "inherit" });
 fs.writeFileSync(${JSON.stringify(marker)}, JSON.stringify({
+  startedAt: Date.now(),
   leaderPid: process.pid,
   descendantPid: child.pid,
   runId: process.env.REA_PROCESS_RUN_ID,
@@ -41,7 +41,6 @@ process.exit(0);
       { mode: 0o700 },
     );
     await chmod(executable, 0o700);
-
     const pending = cli.run({
       arguments: ["doctor", "--provider", "kuna", "--json"],
       environment: {
@@ -58,41 +57,33 @@ process.exit(0);
       timeoutMs: 20_000,
     });
     let ownership: OwnedProcessGroup | undefined;
-    const startedAt = Date.now();
-    try {
-      let markerContents: string | undefined;
-      for (let attempt = 0; attempt < 100; attempt++) {
-        try {
-          markerContents = await readFile(marker, "utf8");
-          break;
-        } catch (cause: unknown) {
-          if (
-            !(
-              cause instanceof Error &&
-              "code" in cause &&
-              cause.code === "ENOENT"
-            )
-          )
-            throw cause;
-        }
-        await delay(50);
-      }
-      expect(markerContents, "fake Kuna probe did not start").toBeDefined();
+    const observeProbe = async () => {
+      const markerContents = await readFile(marker, "utf8");
       const observed = z
         .strictObject({
+          startedAt: z.number().int().positive(),
           leaderPid: z.number().int().positive(),
           descendantPid: z.number().int().positive(),
           runId: z.string().min(1),
         })
-        .parse(JSON.parse(markerContents!));
+        .parse(JSON.parse(markerContents));
       ownership = {
         leaderPid: observed.leaderPid,
         processGroupId: observed.leaderPid,
         runId: observed.runId,
       };
 
+      return { ...observed, ownership };
+    };
+    try {
+      // CLI module startup is outside the version probe's deadline. The marker
+      // persists after probe exit, so await the already bounded command rather
+      // than imposing a separate five-second startup deadline.
       const result = await pending;
-      expect(Date.now() - startedAt).toBeLessThan(16_000);
+      const completedAt = Date.now();
+      const observed = await observeProbe();
+
+      expect(completedAt - observed.startedAt).toBeLessThan(16_000);
       expect(result.exitCode, result.stderr).toBe(1);
       expect(result.json).toMatchObject({
         providerInspections: expect.arrayContaining([
@@ -124,15 +115,31 @@ process.exit(0);
           }),
         ]),
       });
-      const groups = await observeOwnedProcessGroups(ownership.runId, [
-        ownership.processGroupId,
+      const groups = await observeOwnedProcessGroups(observed.ownership.runId, [
+        observed.ownership.processGroupId,
       ]);
-      expect(groups.get(ownership.processGroupId)).toEqual({ state: "empty" });
+      expect(groups.get(observed.ownership.processGroupId)).toEqual({
+        state: "empty",
+      });
     } finally {
+      // Settle the command before reading its durable ownership marker, even
+      // when the primary await rejected. The primary error remains visible.
+      await pending.catch(() => undefined);
+      if (ownership === undefined) {
+        await observeProbe().catch((cause: unknown) => {
+          if (
+            !(
+              cause instanceof Error &&
+              "code" in cause &&
+              cause.code === "ENOENT"
+            )
+          )
+            throw cause;
+        });
+      }
       if (ownership !== undefined) {
         expect((await cleanupOwnedProcessGroup(ownership)).cleaned).toBe(true);
       }
-      await pending;
     }
   },
 );

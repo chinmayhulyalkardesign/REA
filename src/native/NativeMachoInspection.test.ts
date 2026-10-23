@@ -403,3 +403,258 @@ describe("Mach-O slice command scheduling", () => {
     expect(result.error).toMatchObject({ reason: "nm failed" });
   });
 });
+
+const inspectRefusal = async (
+  fileType: string,
+  diagnostic: string,
+  exitCode = 1,
+  options: {
+    stderr?: string;
+    refusedMode?: string;
+    exportsDiagnostic?: string;
+    exportsStderr?: string;
+  } = {},
+) => {
+  const fixture = new NativeFixtureRunner();
+  const result = await inspectNativeMacho({
+    target: nativeMachoTarget("/fixture/debug"),
+    run: async (tool, args, _signal, acceptNonZeroIf) => {
+      if (tool === "nm" && !args.includes("--no-dyldinfo"))
+        return err(
+          new AnalysisOutputError("inspect_macho", "unexpected nm fallback"),
+        );
+      const base = await fixture.run(tool, args);
+      if (!base.ok) return base;
+      if (tool === "otool")
+        return ok({
+          ...base.value,
+          stdout: base.value.stdout.replace("EXECUTE", fileType),
+        });
+      if (tool === "dyld_info") {
+        if (
+          options.refusedMode !== undefined &&
+          !args.includes(options.refusedMode)
+        )
+          return base;
+        const effectiveDiagnostic = args.includes("-exports")
+          ? (options.exportsDiagnostic ?? diagnostic)
+          : diagnostic;
+        const stdout = `/fixture/debug:\n${effectiveDiagnostic}\n`;
+        const stderr = args.includes("-exports")
+          ? (options.exportsStderr ?? options.stderr ?? "")
+          : (options.stderr ?? "");
+        const failed = {
+          ...base.value,
+          stdout,
+          stdoutBytes: Buffer.byteLength(stdout),
+          exitCode,
+          stderr,
+          stderrBytes: Buffer.byteLength(stderr),
+        };
+        return acceptNonZeroIf?.(failed)
+          ? ok(failed)
+          : err(
+              new AnalysisOutputError("inspect_macho", "dyld_info failed", {
+                capturedOutput: {
+                  stdout: failed.stdout,
+                  stderr: failed.stderr,
+                  stdout_bytes: failed.stdoutBytes,
+                  stderr_bytes: failed.stderrBytes,
+                  exit_code: failed.exitCode,
+                  signal: failed.signal,
+                  truncated: false,
+                },
+              }),
+            );
+      }
+      return base;
+    },
+    invocation: (command) => ({
+      tool: command.tool,
+      command: [command.executable, ...command.arguments],
+      tool_version: command.toolVersion,
+      version_reason: command.versionReason,
+      executable_sha256: command.executableSha256,
+      exit: { code: command.exitCode, signal: command.signal },
+      stdout_bytes: command.stdoutBytes,
+      stderr_bytes: command.stderrBytes,
+    }),
+  });
+  return result;
+};
+
+describe("Mach-O target-layout refusals", () => {
+  it.each([
+    [
+      "DSYM",
+      "10",
+      "section '__TEXT/__text' has offset=0 but is not a zero-fill section type",
+    ],
+    ["CORE", "4", "unknown mh.filetype 4"],
+    ["FVMLIB", "3", "unknown mh.filetype 3"],
+  ] as const)(
+    "classifies the confirmed %s refusal with retained output",
+    async (_kind, fileType, diagnostic) => {
+      const result = await inspectRefusal(fileType, diagnostic);
+      expect(result.ok).toBe(false);
+      if (result.ok) return;
+      expect(result.error).toMatchObject({
+        _tag: "AnalysisUnsupportedTargetError",
+        diagnostics: { tool: "dyld_info", target_file_type: fileType },
+        capturedOutput: { exit_code: 1, truncated: false },
+      });
+      expect(result.error.capturedOutput?.stdout).toContain(diagnostic);
+    },
+  );
+
+  it.each(["-imports", "-exports"])(
+    "confirms a refusal from %s without invoking the export fallback",
+    async (refusedMode) => {
+      const result = await inspectRefusal(
+        "DSYM",
+        "dyld_info: section '__TEXT/__text' has offset=0 but is not a zero-fill section type",
+        1,
+        { refusedMode },
+      );
+      expect(result.ok).toBe(false);
+      if (result.ok) return;
+      expect(result.error._tag).toBe("AnalysisUnsupportedTargetError");
+    },
+  );
+
+  it.each([
+    ["unknown mh.filetype 4\nunrelated loader error", ""],
+    ["unknown mh.filetype 4\nunknown mh.filetype 3", ""],
+    ["unknown mh.filetype 4", "unrelated stderr error"],
+  ])(
+    "preserves mixed errors as output failures: %s / %s",
+    async (diagnostic, stderr) => {
+      const result = await inspectRefusal("CORE", diagnostic, 1, { stderr });
+      expect(result.ok).toBe(false);
+      if (result.ok) return;
+      expect(result.error).toMatchObject({
+        _tag: "AnalysisOutputError",
+        reason: "dyld_info failed",
+      });
+    },
+  );
+
+  it.each([
+    ["CORE", "unknown mh.filetype 4", "unknown mh.filetype 3"],
+    ["FVMLIB", "unknown mh.filetype 3", "unknown mh.filetype 4"],
+    ["CORE", "unknown mh.filetype 3", "unknown mh.filetype 4"],
+    ["FVMLIB", "unknown mh.filetype 4", "unknown mh.filetype 3"],
+  ])(
+    "rejects contradictory imports/exports refusals with a %s header: %s / %s",
+    async (fileType, importsDiagnostic, exportsDiagnostic) => {
+      const result = await inspectRefusal(fileType, importsDiagnostic, 1, {
+        exportsDiagnostic,
+      });
+      expect(result.ok).toBe(false);
+      if (result.ok) return;
+      const headerDiagnostic =
+        fileType === "CORE" ? "unknown mh.filetype 4" : "unknown mh.filetype 3";
+      const conflictingDiagnostic =
+        importsDiagnostic === headerDiagnostic
+          ? exportsDiagnostic
+          : importsDiagnostic;
+      expect(result.error).toMatchObject({
+        _tag: "AnalysisOutputError",
+        capturedOutput: {
+          stdout: `/fixture/debug:\n${conflictingDiagnostic}\n`,
+        },
+      });
+    },
+  );
+
+  it("keeps a matching diagnostic on a different file type as an output failure", async () => {
+    const result = await inspectRefusal(
+      "EXECUTE",
+      "section '__TEXT/__text' has offset=0 but is not a zero-fill section type",
+    );
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error._tag).toBe("AnalysisOutputError");
+  });
+
+  it("keeps an unexpected dyld failure as a command failure", async () => {
+    const result = await inspectRefusal("DSYM", "unexpected loader error");
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error).toMatchObject({
+      _tag: "AnalysisOutputError",
+      reason: "dyld_info failed",
+    });
+  });
+});
+
+describe("Mach-O mixed dyld failures", () => {
+  const missingUuid = "dyld_info: missing LC_UUID load command";
+  const layoutRefusal = "unknown mh.filetype 4";
+
+  it.each([
+    ["-imports", "stdout"],
+    ["-exports", "stdout"],
+    ["-imports", "stderr"],
+    ["-exports", "stderr"],
+  ])(
+    "keeps extra %s missing-UUID %s errors beside a clean layout refusal",
+    async (failedMode, stream) => {
+      const diagnostic =
+        stream === "stdout"
+          ? `${missingUuid}\nunrelated loader error`
+          : missingUuid;
+      const stderr = stream === "stderr" ? "unrelated stderr error" : "";
+      const result = await inspectRefusal(
+        "CORE",
+        failedMode === "-imports" ? diagnostic : layoutRefusal,
+        1,
+        {
+          exportsDiagnostic:
+            failedMode === "-exports" ? diagnostic : layoutRefusal,
+          stderr: failedMode === "-imports" ? stderr : "",
+          exportsStderr: failedMode === "-exports" ? stderr : "",
+        },
+      );
+      expect(result).toMatchObject({
+        ok: false,
+        error: {
+          _tag: "AnalysisOutputError",
+          reason: "dyld_info failed",
+          capturedOutput: {
+            stdout: `/fixture/debug:\n${diagnostic}\n`,
+            stderr,
+            exit_code: 1,
+            signal: null,
+          },
+        },
+      });
+    },
+  );
+
+  it.each(["-imports", "-exports"])(
+    "keeps a contradictory %s UUID observation beside a clean layout refusal",
+    async (failedMode) => {
+      const result = await inspectRefusal(
+        "CORE",
+        failedMode === "-imports" ? missingUuid : layoutRefusal,
+        1,
+        {
+          exportsDiagnostic:
+            failedMode === "-exports" ? missingUuid : layoutRefusal,
+        },
+      );
+      expect(result).toMatchObject({
+        ok: false,
+        error: {
+          _tag: "AnalysisOutputError",
+          reason:
+            "dyld_info reported a missing LC_UUID despite an observed LC_UUID load command",
+          capturedOutput: {
+            stdout: `/fixture/debug:\n${missingUuid}\n`,
+          },
+        },
+      });
+    },
+  );
+});

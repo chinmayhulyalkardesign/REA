@@ -267,3 +267,44 @@ Section
   const truncatedBytes = truncatedCount.replace("2 2 48", "2 1 32");
   expect(() => parseOtoolLoadCommands(truncatedBytes)).toThrow(/sizes/u);
 });
+
+it.each([
+  ["1", "OBJECT"],
+  ["2", "EXECUTE"],
+  ["3", "FVMLIB"],
+  ["4", "CORE"],
+  ["5", "PRELOAD"],
+  ["6", "DYLIB"],
+  ["7", "DYLINKER"],
+  ["8", "BUNDLE"],
+  ["9", "DYLIB_STUB"],
+  ["10", "DSYM"],
+  ["11", "KEXT_BUNDLE"],
+  ["12", "FILESET"],
+])(
+  "canonicalizes numeric and symbolic Mach header type %s as %s while retaining raw text",
+  async (numeric, symbolic) => {
+    const fixture = await nativeFixture("otool-load.txt");
+    for (const raw of [numeric, symbolic]) {
+      expect(
+        parseOtoolLoadCommands(fixture.replace("EXECUTE", raw)),
+      ).toMatchObject({
+        fileType: raw,
+        fileTypeKind: symbolic,
+      });
+    }
+  },
+);
+
+it.each(["99", "FUTURE_KIND"])(
+  "preserves unknown Mach header type %s without guessing",
+  async (raw) => {
+    const fixture = await nativeFixture("otool-load.txt");
+    expect(
+      parseOtoolLoadCommands(fixture.replace("EXECUTE", raw)),
+    ).toMatchObject({
+      fileType: raw,
+      fileTypeKind: null,
+    });
+  },
+);
